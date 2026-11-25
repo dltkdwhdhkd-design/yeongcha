@@ -139,6 +139,7 @@ function drawHint(c, h, me, t, cx, vw) {
     if (h.k === 'jump') say('점프!'); else if (Math.abs(h.x - hx) > 40) say(h.x > hx ? '여기로 →' : '← 여기로');
   } else if (h.k === 'push') say(h.dir > 0 ? '→ 밀어요!' : '← 밀어요!');
   else if (h.k === 'door') say('↓ 문으로!');
+  else if (h.k === 'wait') say('그대로 서 있어요!');
 }
 function drawWire(c, o, W, t) {
   const on = YC.linkOn(W, o), P = o.pts;
@@ -265,6 +266,8 @@ function drawSign(c, o, n) {
   box(c, x, y - 20 - h, w, h, 6, '#fff4d6', INK, 2.5);
   const cx = x + w / 2, cy = y - 20 - h / 2;
   switch (o.icon) {
+    case 'stack3': if (n >= 3) { pip(c, cx - 10, cy + 17, 10, '#74c0fc'); pip(c, cx - 10, cy + 7, 10, '#ffd43b'); pip(c, cx - 10, cy - 3, 10, '#ff8787'); arrow(c, cx + 8, cy + 10, 20, 1, '#40c057', 4); c.save(); c.translate(cx + 14, cy + 2); c.rotate(-Math.PI / 2); arrow(c, 0, 0, 14, 1, '#40c057', 4); c.restore(); break; }   // 셋이 탑 쌓기 (둘 이하면 아래 그림)
+    // falls through
     case 'stack': pip(c, cx - 10, cy + 14, 12, '#74c0fc'); pip(c, cx - 10, cy + 2, 12, '#ff8787'); arrow(c, cx + 8, cy + 10, 20, 1, '#40c057', 4); c.save(); c.translate(cx + 14, cy + 2); c.rotate(-Math.PI / 2); arrow(c, 0, 0, 14, 1, '#40c057', 4); c.restore(); break;
     case 'push': { const k = YC.needOf(o.need || 'most', n); for (let i = 0; i < Math.min(k, 3); i++) pip(c, cx - 22 + i * 9, cy + 9, 9, '#ff8787'); arrow(c, cx - 2, cy + 3, 13, 1, '#fa5252', 4); box(c, cx + 13, cy - 7, 15, 15, 3, '#e0a660', INK, 1.5); break; }
     case 'drop': { const k = Math.max(1, n - 1); for (let i = 0; i < Math.min(k, 3); i++) { pip(c, cx - 34 + i * 11, cy - 2, 10, '#ff8787'); } c.save(); c.translate(cx - 23, cy + 1); c.rotate(Math.PI / 2); arrow(c, 0, 0, 13, 1, '#fa5252', 4); c.restore(); label(c, '동시에!', cx + 20, cy, 12, INK, null); break; }
@@ -316,7 +319,7 @@ Renderer.prototype.buildCache = function (W) {
     if (!sol(tx + 1, ty) && tx < W.cols - 1) { c.moveTo(x + T, y); c.lineTo(x + T, y + T); }
     c.stroke();
   }
-  this.ckey = W.def.id + ':' + sc;
+  this.cdef = W.def; this.csc = sc;
 };
 Renderer.prototype.spark = function (kind, x, y, n, col) {
   for (let i = 0; i < n; i++) {
@@ -351,9 +354,9 @@ Renderer.prototype.draw = function (v) {
   }
   c.translate(-cx, -cy);
   // 땅
-  if (!this.cache || this.ckey !== W.def.id + ':' + sc) this.buildCache(W);
+  if (!this.cache || this.cdef !== W.def || this.csc !== sc) this.buildCache(W);   // 판(씨앗·난이도)마다 땅 모양이 다르므로 판 자체로 맞춘다
   c.drawImage(this.cache, 0, 0, this.cache.width / sc, this.cache.height / sc);
-  if (W.n <= 1) for (let yy = 0; yy < W.rows; yy++) for (let xx = 0; xx < W.cols; xx++) if (W.ch(xx, yy) === 's') { box(c, xx * T + 1, yy * T + 1, T - 2, T - 2, 6, '#d0ebff', '#4dabf7', 2.5); label(c, '혼자', xx * T + 16, yy * T + 16, 10, '#1c7ed6', null); }
+  if (W.n <= 2) for (let yy = 0; yy < W.rows; yy++) for (let xx = 0; xx < W.cols; xx++) { const q = W.ch(xx, yy); if ((q === 's' && W.n <= 1) || q === 'd') { box(c, xx * T + 1, yy * T + 1, T - 2, T - 2, 6, '#d0ebff', '#4dabf7', 2.5); label(c, q === 's' ? '혼자' : '둘이', xx * T + 16, yy * T + 16, 10, '#1c7ed6', null); } }
   const n = W.n, O = W.objs;
   for (const o of O) if (o.type === 'exit') drawExit(c, o, t); else if (o.type === 'flag') drawFlag(c, o, v.ck >= o.idx); else if (o.type === 'sign') drawSign(c, o, n);
     else if (o.type === 'wire') drawWire(c, o, W, t); else if (o.type === 'cell') drawCell(c, o); else if (o.type === 'bulb') drawBulb(c, o, W, t);

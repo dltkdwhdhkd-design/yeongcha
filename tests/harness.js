@@ -12,7 +12,7 @@ function Sim(o) {
   this.teams = []; this.bots = []; this.log = [];
   const slots = []; for (let i = 0; i < o.n; i++) slots.push(i);
   for (let i = 0; i < o.n; i++) {
-    const tm = new YC.Team({ slot: i, slots: slots, stages: o.stages, build: YC.build, spect: !!o.spect, seed: o.lseed | 0 });
+    const tm = new YC.Team({ slot: i, slots: slots, stages: o.stages, build: YC.build, spect: !!o.spect, seed: o.lseed | 0, df: o.df | 0 });
     tm.selfDelay = this.delay; tm.cd0 = o.cd0 === undefined ? 0.3 : o.cd0;
     this.teams.push(tm); this.bots.push(new Bot(this, i));
   }

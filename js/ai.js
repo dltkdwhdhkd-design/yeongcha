@@ -132,6 +132,7 @@ scripts.push = function (sim) {
     if (n === 1) {
       yield* b.hold(1, () => bq(b).lat, 30, '가까운 상자를 단추에');
       yield* overBox(b, Q(b), 1);
+      if (b.feet() < 400) { yield* b.walkTo(P(b).x - 16, 2, 10); yield* b.until(() => b.me.gr && b.feet() > 400, 4, '턱에서 내려옴'); }   // 상자가 턱까지 밀려 가 턱 위에 내려섰으면 틈으로 내려간다
       yield* b.hold(1, () => bp(b).lat, 30, '먼 상자를 단추에');
     } else if (front) {
       yield* overBox(b, Q(b), 1);
@@ -144,26 +145,8 @@ scripts.push = function (sim) {
     if (b.cx() < Q(b).x + 32) { yield* overBox(b, Q(b), 1); yield* b.walkTo(X(70), 6, 20); }
     yield* overBox(b, P(b), 1);
     if (b.cx() < X(81)) yield* b.walkTo(X(81) + i * 10, 8, 20);
-    // 선반 위 열쇠
-    if (n === 1) {
-      yield* b.walkTo(X(40 + D)); yield* b.jump(X(41 + D)); yield* b.jump(X(43 + D));
-    } else if (b === base) {
-      for (let k = 0; k < 400 && !(key(b).hd >= 0 || key(b).used); k++) {          // 열쇠를 얻을 때까지 자리를 지킨다 (밀려나면 다시 선다)
-        if (Math.abs(b.cx() - (X(41 + D) - 4)) > 3 && b.me.riders === 0) yield* b.walkTo(X(41 + D) - 4, 2, 20);
-        yield* b.wait(0.2);
-      }
-    } else if (b === climber) {
-      yield* stand(b, X(41 + D) - 4 - 34);
-      yield* b.until(() => Math.abs(base.cx() - (X(41 + D) - 4)) < 5 && base.me.gr && base.me.gRef >= 0 && Math.abs(base.me.vx) < 5, 30, '받침 자리 잡기 2');
-      yield* hopOn(b, base);
-      yield* b.jump(X(43 + D));
-      yield* b.walkTo(X(43 + D), 4);
-      yield* b.until(() => key(b).hd >= 0 || key(b).used, 5, '열쇠 줍기');
-      yield* b.walkTo(X(45 + D) + 8, 8); yield* offHead(b, 1);
-    } else {
-      yield* stand(b, X(41 + D) - 4 - 80 - back * 32);
-    }
-    if (n > 1 && b !== climber) yield* b.until(() => key(b).hd >= 0 || key(b).used, 40, '열쇠');
+    // 선반 위 열쇠 (하드: 선반이 한 칸 더 높아 셋이 탑을 쌓는다)
+    yield* stackUp(b, sim, { what: '열쇠', baseX: X(41 + D) - 4, top: X(43 + D), soloX: X(41 + D), tall: isHard(b), shelfY: isHard(b) ? 9 * T : 10 * T, done: b => key(b).hd >= 0 || key(b).used, goal: X(48 + D) });
     yield* goExit(b);
   }));
 };
@@ -243,8 +226,8 @@ scripts.ice = function (sim) {
 scripts.saw = function (sim) {
   const B = sim.bots, n = sim.n, rider = B[n - 1], sh = sim.share ? sim.share('saw') : {};
   const sawA = b => b.obj('saw', 0), sawB = b => b.obj('saw', 1), door = b => b.obj('door'), key = b => b.obj('key');
-  const need = Math.min(3, Math.max(1, n - 1));
   B.forEach((b, i) => b.play(function* (b) {
+    const sw = b.obj('saw', 1), need = Math.min((sw && sw.nmax) || 3, Math.max(1, n - 1));   // 동시에 뛰어내릴 사람 수 (하드는 더 많다). 자기 화면에서 읽는다
     yield* b.until(() => b.T.TS.ph === 2, 10, '시작');
     const w = n - 2 - i;                                             // 뒤따르는 사람의 순번 (0이 맨 앞)
     const cross = function* () {                                     // 시소를 건너 문으로
@@ -306,10 +289,10 @@ scripts.saw = function (sim) {
       const q = p - 1;
       yield* b.walkTo(X(32) - 14 - q * 26, 2);                       // 탑 꼭대기에 줄 서기
       yield* b.wait(0.3); sh['up' + q] = true;
-      yield* b.until(() => sh.riderReady && [0, 1, 2].slice(0, need).every(k => sh['up' + k]), 120, '모두 준비');
+      yield* b.until(() => sh.riderReady && [0, 1, 2, 3, 4].slice(0, need).every(k => sh['up' + k]), 120, '모두 준비');
       if (!sh.goT) sh.goT = sim.t + 700;
       yield* b.until(() => sim.t >= sh.goT, 5);
-      yield* b.jump(1160 - 49 - q * 26, 3);                          // 하나 둘 셋!
+      yield* b.jump(1160 - 49 - q * (need > 3 ? 21 : 26), 3);        // 하나 둘 셋! (넷이면 조금 촘촘히 시소 왼쪽 끝에)
       yield* b.wait(1.2);
     } else {
       yield* b.walkTo(X(32) - 14 - (p - 1) * 26, 4);
@@ -442,6 +425,9 @@ scripts.raft = function (sim) {
 
 /* ═══════════ 새 스테이지 공통 동작 ═══════════ */
 const ctr = o => o.x + o.w / 2;
+const tag = (b, t) => b.T.W.objs.filter(o => o.tag === t);                       // 이름표(tag)로 찾기: 난이도마다 단추 수가 달라도 헷갈리지 않는다
+const isHard = b => !!(b.T.W.def && b.T.W.def.df === 1);
+const need1 = (b, t) => tag(b, t).filter(p => !(p.minN > b.sim.n)).sort((p, q) => p.x - q.x);   // 지금 인원에서 사람이 서야 하는 단추들 (왼쪽부터)
 /* 병렬 스위치 두 개로 막힌 곳 건너기: 맨 앞(n-1)이 앞 스위치를 누르고 있고, 다른 사람이 건너가 뒤 스위치를 누르면 그때 건넌다 */
 function* swapCross(b, sim, c) {
   const B = sim.bots, n = sim.n, i = b.i, H = n - 1, P = n - 2;
@@ -470,21 +456,45 @@ function* seriesPlates(b, sim, c) {
   yield* b.wait((sim.n - 1 - i) * 0.15);
   yield* b.walkTo(c.goal - i * 8, 8, 40);
 }
-/* 친구 머리를 밟고 높은 선반으로: 맨 앞(n-1)이 받침, 그다음(n-2)이 올라가 선반의 스위치를 밟는다 */
+/* 친구 머리를 밟고 높은 선반으로: 맨 앞(n-1)이 받침, 그다음(n-2)이 올라가 선반의 스위치를 밟는다.
+   c.tall(하드): 선반이 한 칸 더 높다 — 셋 이상이면 n-2가 받침 머리 위에 서고 n-3이 그 위로 오른다
+   (앞에 선 사람부터 받침·가운데·오를 사람 순이라 서로 앞지를 일이 없다).
+   둘뿐이면 받침이 d 디딤돌 위에 서고, 혼자면 s 디딤돌 둘을 밟는다 */
 function* stackUp(b, sim, c) {
-  const B = sim.bots, n = sim.n, i = b.i, base = B[n - 1], climber = B[n - 2];
-  if (n === 1) { yield* b.walkTo(c.soloX - T, 4, 40); yield* b.jump(c.soloX); yield* b.jump(c.top); yield* b.walkTo(c.top, 6); yield* b.until(() => c.done(b), 10, c.what); yield* b.walkTo(c.goal, 8, 40); return; }
+  const B = sim.bots, n = sim.n, i = b.i, base = B[n - 1], t3 = c.tall && n >= 3, mid = t3 ? B[n - 2] : null, climber = t3 ? B[n - 3] : B[n - 2];
+  const baseSet = () => Math.abs(base.cx() - c.baseX) < 5 && base.me.gr && base.me.gRef >= 0 && Math.abs(base.me.vx) < 5;
+  if (n === 1) {
+    yield* b.walkTo(c.soloX - (c.tall ? 2 : 1) * T, 4, 40); if (c.tall) yield* b.jump(c.soloX - T);
+    yield* b.jump(c.soloX); yield* b.jump(c.top); yield* b.walkTo(c.top, 6); yield* b.until(() => c.done(b), 10, c.what); yield* b.walkTo(c.goal, 8, 40); return;
+  }
   if (b === base) {
-    for (let k = 0; k < 400 && !c.done(b); k++) { if (Math.abs(b.cx() - c.baseX) > 3 && b.me.riders === 0) yield* b.walkTo(c.baseX, 2, 20); yield* b.wait(0.2); }
-  } else if (b === climber) {
+    for (let k = 0; k < 600 && !c.done(b); k++) { if (Math.abs(b.cx() - c.baseX) > 3 && b.me.riders === 0) yield* b.walkTo(c.baseX, 2, 20); yield* b.wait(0.2); }
+  } else if (b === mid) {                                            // 탑의 가운데: 받침 머리 위에 올라가 가만히 선다
+    yield* b.until(() => base.cx() > c.baseX - 24 || c.done(b), 60, '받침이 먼저 감');   // 받침보다 앞서 있으면 기다린다 (서로 길을 막지 않게)
     yield* stand(b, c.baseX - 34);
-    yield* b.until(() => Math.abs(base.cx() - c.baseX) < 5 && base.me.gr && base.me.gRef >= 0 && Math.abs(base.me.vx) < 5, 30, '받침 자리 잡기');
-    yield* hopOn(b, base);
-    yield* b.jump(c.top);
+    for (let k = 0; k < 4 && !c.done(b); k++) {
+      yield* b.until(baseSet, 30, '받침 자리 잡기');
+      yield* hopOn(b, base);
+      if (b.tell) b.tell({ k: 'wait' });
+      yield* b.until(() => c.done(b) || b.me.gRef !== -(base.i + 1), 90, c.what);
+      if (!c.done(b)) { yield* offHead(b, -1); yield* stand(b, c.baseX - 34); }   // 미끄러져 내려왔으면 다시
+    }
+    yield* b.until(() => c.done(b), 60, c.what);
+    yield* offHead(b, -1);
+  } else if (b === climber) {
+    yield* b.until(() => (mid ? mid : base).cx() > c.baseX - (mid ? 50 : 24) || c.done(b), 60, '앞사람이 먼저 감');
+    yield* stand(b, c.baseX - (mid ? 62 : 34));
+    for (let k = 0; k < 4 && !c.done(b); k++) {
+      if (mid) { yield* b.until(() => baseSet() && mid.me.gr && mid.me.gRef === -(base.i + 1) && Math.abs(mid.me.vx) < 5, 60, '가운데 친구가 올라섬'); yield* hopOn(b, mid); }
+      else { yield* b.until(baseSet, 30, '받침 자리 잡기'); yield* hopOn(b, base); }
+      yield* b.jump(c.top);
+      if (b.feet() < c.shelfY + 4 && b.me.gr) break;                // 선반 위
+      yield* offHead(b, -1); yield* stand(b, c.baseX - (mid ? 62 : 34));
+    }
     yield* b.walkTo(c.top, 4);
     yield* b.until(() => c.done(b), 8, c.what);
     yield* b.walkTo(c.top + 70, 8); yield* offHead(b, 1);
-  } else yield* stand(b, c.baseX - 80 - (n - 3 - i) * 32);
+  } else { yield* b.until(() => climber.cx() > c.baseX - (mid ? 90 : 60) || c.done(b), 60, '앞사람이 먼저 감'); yield* stand(b, c.baseX - (mid ? 110 : 80) - (n - (mid ? 4 : 3) - i) * 32); }
   yield* b.until(() => c.done(b), 60, c.what);
   yield* b.walkTo(c.goal - i * 8, 8, 40);
 }
@@ -493,6 +503,10 @@ function* stackUp(b, sim, c) {
 function* balloonRide(b, sim, c) {
   const B = sim.bots, n = sim.n, i = b.i, H = n - 1, P = n - 2, L = () => c.lift(b);
   const onL = o => o.me.gr && o.me.gRef === L().id;
+  // 하드: 한 번에 cap명까지만 뜬다 → P부터 cap명씩 나눠 타고, 버너 지기는 한 무리가 올라갈 때마다 버너에서 내려와 열기구를 내려보낸다
+  const cap = L().cap || 99, order = []; for (let j = n - 2; j >= 0; j--) order.push(j);
+  const grp = j => Math.floor(order.indexOf(j) / cap), nG = Math.max(1, Math.ceil(order.length / cap));
+  const upTop = o => o.cx() > c.landX && o.me.gr && !onL(o);
   const board = function* () {
     for (let k = 0; k < 12 && !onL(b); k++) {
       yield* b.until(() => L().t < 0.02, 40, '열기구가 내려와 있음');
@@ -503,14 +517,21 @@ function* balloonRide(b, sim, c) {
   const off = function* () { yield* b.until(() => L().t > 0.995, 40, '열기구가 다 올라감'); yield* b.hold(1, () => b.cx() > c.landX && b.me.gr && !onL(b), 8, '내리기'); };
   if (n === 1) { yield* board(); yield* off(); yield* b.walkTo(c.goal, 8, 40); return; }
   if (i === H) {
-    yield* b.walkTo(ctr(c.h1(b)) - 34, 6, 30);
-    yield* b.until(() => B.every((o, j) => j === H || onL(o)), 60, '모두 열기구에 탐');
-    yield* stand(b, ctr(c.h1(b)), 4);
-    yield* b.until(() => B.every((o, j) => j === H || o.cx() > c.landX), 90, '모두 올라감');
+    const aside = () => c.h1(b).x - 24;                              // 버너 옆 (버너를 밟지 않는 자리)
+    yield* b.walkTo(aside(), 6, 30);
+    for (let g = 0; g < nG; g++) {
+      const mem = order.filter(j => grp(j) === g);
+      yield* b.until(() => mem.every(j => onL(B[j])), 60, '열기구에 탐 (' + (g + 1) + '번째)');
+      yield* stand(b, ctr(c.h1(b)), 4);
+      yield* b.until(() => mem.every(j => B[j].cx() > c.landX), 90, '올라감 (' + (g + 1) + '번째)');
+      if (g < nG - 1) { yield* b.walkTo(aside(), 6, 30); yield* b.until(() => L().t < 0.02, 40, '열기구가 다시 내려옴'); }   // 버너를 끄면 식어서 내려온다
+    }
     yield* b.until(() => Math.abs(B[P].cx() - (ctr(c.h2(b)) - 40)) < 12, 30, '위 버너 지기 준비');
     yield* b.walkTo(L().x1 - 30, 6, 30);
     yield* board(); yield* off();
   } else {
+    const g = grp(i);
+    yield* b.until(() => order.every(j => grp(j) >= g || upTop(B[j])), 200, '내 차례');
     yield* board(); yield* off();
     if (i === P) {
       yield* b.walkTo(ctr(c.h2(b)) - 40, 4, 30);
@@ -523,22 +544,23 @@ function* balloonRide(b, sim, c) {
 }
 
 scripts.circuit = function (sim) {
-  const n = sim.n, btn = (b, k) => b.obj('btn', k), door = (b, k) => b.obj('door', k);
+  const door = (b, k) => b.obj('door', k);
   sim.bots.forEach((b, i) => b.play(function* (b) {
     yield* b.until(() => b.T.TS.ph === 2, 10, '시작');
-    yield* swapCross(b, sim, { what: '병렬 문', A: b => btn(b, 0), B: b => btn(b, 1), open: b => door(b, 0).open > 0.9, pass: 14 * T + 20, pass2: 14 * T + 20, goal: X(19) });
-    yield* seriesPlates(b, sim, { what: '직렬 회로', plates: b => [2, 3, 4, 5].map(k => btn(b, k)).slice(0, Math.min(4, n)), done: b => door(b, 1).open > 0.9, goal: X(40) });
-    yield* swapCross(b, sim, { what: '빛다리', A: b => btn(b, 6), B: b => btn(b, 7), open: b => door(b, 2).open < 0.2, pass: 55 * T + 8, pass2: 55 * T + 8, goal: X(59) });
+    yield* swapCross(b, sim, { what: '병렬 문', A: b => tag(b, 'pA')[0], B: b => tag(b, 'pB')[0], open: b => door(b, 0).open > 0.9, pass: 14 * T + 20, pass2: 14 * T + 20, goal: X(19) });
+    yield* seriesPlates(b, sim, { what: '직렬 회로', plates: b => need1(b, 'ser'), done: b => door(b, 1).open > 0.9, goal: X(40) });
+    yield* swapCross(b, sim, { what: '빛다리', A: b => tag(b, 'bA')[0], B: b => tag(b, 'bB')[0], open: b => door(b, 2).open < 0.2, pass: 55 * T + 8, pass2: 55 * T + 8, goal: X(59) });
     yield* b.wait(i * 0.2);
     yield* goExit(b);
   }));
 };
 scripts.fire = function (sim) {
-  const n = sim.n, btn = (b, k) => b.obj('btn', k), fire = (b, k) => b.obj('fire', k), fuel = b => b.obj('box', 0);
+  const n = sim.n, fire = (b, k) => b.obj('fire', k), fuel = b => b.obj('box', 0);
   sim.bots.forEach((b, i) => b.play(function* (b) {
     yield* b.until(() => b.T.TS.ph === 2, 10, '시작');
-    // 공기 구멍 두 곳 막기
-    if (i < 3) yield* stand(b, ctr(btn(b, i)), 4); else yield* b.walkTo(X(6) - i * 10, 8, 30);
+    // 공기 구멍 막기 (구멍 수는 난이도에 따라 셋·넷)
+    const vents = need1(b, 'vent');                                  // 지금 인원에서 막아야 하는 구멍 (왼쪽부터) — 뒤에 선 사람이 왼쪽 구멍을 맡아 서로 앞지르지 않는다
+    if (i < vents.length) yield* stand(b, ctr(vents[i]), 4); else yield* b.walkTo(X(16) - 26 - (n - 1 - i) * 26, 8, 30);   // 남는 사람은 불 앞(구멍들보다 오른쪽)에서 기다린다
     yield* b.until(() => fire(b, 0).out > 0.99, 30, '첫 불 꺼짐');
     yield* b.walkTo(X(22) - i * 6, 8, 30);
     // 장작 상자 밀어 내기
@@ -547,7 +569,7 @@ scripts.fire = function (sim) {
     for (let k = 0; k < 4 && b.cx() < fuel(b).x + fuel(b).w + 8; k++) yield* overBox(b, fuel(b), 1);
     yield* b.walkTo(X(36), 8, 30);
     // 높은 선반의 물 뿌리개
-    yield* stackUp(b, sim, { what: '물 뿌리개', baseX: X(41) - 4, top: X(43), soloX: X(41), done: b => fire(b, 2).out > 0.99, goal: X(52) });
+    yield* stackUp(b, sim, { what: '물 뿌리개', baseX: X(41) - 4, top: X(43), soloX: X(41), tall: isHard(b), shelfY: isHard(b) ? 9 * T : 10 * T, done: b => fire(b, 2).out > 0.99, goal: X(52) });
     yield* b.wait(i * 0.2);
     yield* goExit(b);
   }));
@@ -563,34 +585,33 @@ scripts.balloon = function (sim) {
   }));
 };
 scripts.freeze = function (sim) {
-  const n = sim.n, btn = (b, k) => b.obj('btn', k), door = (b, k) => b.obj('door', k);
+  const door = (b, k) => b.obj('door', k);
   sim.bots.forEach((b, i) => b.play(function* (b) {
     yield* b.until(() => b.T.TS.ph === 2, 10, '시작');
-    yield* swapCross(b, sim, { what: '얼음 다리', A: b => btn(b, 0), B: b => btn(b, 1), open: b => door(b, 0).open < 0.2, pass: 20 * T + 8, pass2: 20 * T + 8, goal: X(24) });
-    yield* seriesPlates(b, sim, { what: '얼음벽', plates: b => [2, 3, 4, 5].map(k => btn(b, k)).slice(0, Math.min(4, n)), done: b => door(b, 1).open > 0.9, goal: X(44) });
-    yield* swapCross(b, sim, { what: '넓은 얼음 다리', A: b => btn(b, 6), B: b => btn(b, 7), open: b => door(b, 2).open < 0.2, pass: 62 * T + 8, pass2: 62 * T + 8, goal: X(65) });
+    yield* swapCross(b, sim, { what: '얼음 다리', A: b => tag(b, 'cA')[0], B: b => tag(b, 'cB')[0], open: b => door(b, 0).open < 0.2, pass: 20 * T + 8, pass2: 20 * T + 8, goal: X(24) });
+    yield* seriesPlates(b, sim, { what: '얼음벽', plates: b => need1(b, 'ser'), done: b => door(b, 1).open > 0.9, goal: X(44) });
+    yield* swapCross(b, sim, { what: '넓은 얼음 다리', A: b => tag(b, 'cC')[0], B: b => tag(b, 'cD')[0], open: b => door(b, 2).open < 0.2, pass: 62 * T + 8, pass2: 62 * T + 8, goal: X(65) });
     yield* b.wait(i * 0.2);
     yield* goExit(b);
   }));
 };
 scripts.light = function (sim) {
-  const B = sim.bots, n = sim.n, btn = (b, k) => b.obj('btn', k), sensor = (b, k) => b.obj('sensor', k);
+  const B = sim.bots, n = sim.n, btn = (b, k) => b.obj('btn', k), sensor = (b, k) => b.obj('sensor', k);   // btn 0: 첫 방 발판
   B.forEach((b, i) => b.play(function* (b) {
     yield* b.until(() => b.T.TS.ph === 2, 10, '시작');
     // 거울 하나
     if (i === n - 1) yield* stand(b, ctr(btn(b, 0)), 4); else yield* b.walkTo(X(6) - i * 10, 8, 30);
     yield* b.until(() => sensor(b, 0).on, 20, '첫 감지기');
-    yield* b.walkTo(X(20) - i * 6, 8, 30);
+    yield* b.walkTo(X(20) + i * 6, 8, 30);                          // 번호가 클수록(발판을 맡을 사람일수록) 앞에 선다
     // 거울 둘 (가운데 발판은 밟지 않는다)
-    const ms = b.T.W.objs.filter(o => o.type === 'mirror'), need = [];   // 처음부터 맞게 놓인 거울의 발판은 밟으면 안 된다
-    if (ms[1].d !== ms[1].ok) need.push(1);
-    if (ms[3].d !== ms[3].ok && !(ms[3].soloOk && n <= 1)) need.push(3);
-    if (i === n - 1 && need[0]) yield* stand(b, ctr(btn(b, need[0])), 4);
-    else if (i === n - 2 && need[1]) yield* stand(b, ctr(btn(b, need[1])), 4);
+    // 둘째 방의 '맞춰야 하는' 거울 가운데 처음부터 틀어진 것만 그 발판을 밟는다 (헷갈리게 하는 발판·처음부터 맞는 거울의 발판은 밟지 않는다)
+    const need = b.T.W.objs.filter(o => o.type === 'mirror' && o.x === 35 * T && o.ok !== undefined && o.d !== o.ok && !(o.soloOk && n <= 1)).map(m => b.T.W.byId[m.link[0]]).sort((p, q) => q.x - p.x);   // 맨 앞사람이 오른쪽 발판
+    if (i === n - 1 && need[0]) yield* stand(b, ctr(need[0]), 4);
+    else if (i === n - 2 && need[1]) yield* stand(b, ctr(need[1]), 4);
     yield* b.until(() => sensor(b, 1).on, 30, '둘째 감지기');
-    yield* b.walkTo(X(44) - i * 6, 8, 30);
+    yield* b.walkTo(X(44) + i * 6, 8, 30);                          // 받침·가운데를 맡을 사람(번호가 큰 쪽)이 앞에
     // 높은 선반의 스위치
-    yield* stackUp(b, sim, { what: '셋째 감지기', baseX: X(48) - 4, top: X(50), soloX: X(48), done: b => sensor(b, 2).on, goal: X(58) });
+    yield* stackUp(b, sim, { what: '셋째 감지기', baseX: X(48) - 4, top: X(50), soloX: X(48), tall: isHard(b), shelfY: isHard(b) ? 9 * T : 10 * T, done: b => sensor(b, 2).on, goal: X(58) });
     yield* b.wait(i * 0.2);
     yield* goExit(b);
   }));

@@ -32,12 +32,13 @@ P.start = function (opt) {
   P.on = true; P.q.length = 0; P.key = ''; P.err = ''; P.errT = 0; YC.opt.noBlock = true; YC.opt.slim = true;              // AI 친구와는 서로 통과한다 (올라타기로 마음먹을 때만 밟힌다)
   P.names = {}; slots.forEach(s => { P.names[s] = NAMES[s]; });
   const seed = 1 + Math.floor(Math.random() * 999999);                                   // 판마다 배치가 조금씩 다르다
-  const G = opt.startGame({ slot: 0, slots: slots, stages: opt.stages, team: 0, names: P.names, first: true, practice: P, seed: seed,
+  const df = opt.df === 1 ? 1 : 0;
+  const G = opt.startGame({ slot: 0, slots: slots, stages: opt.stages, team: 0, names: P.names, first: true, practice: P, seed: seed, df: df,
     send: (type, pay) => P.deliver(0, type, pay), onQuit: opt.onQuit });
   P.G = G;
   const now = performance.now();
   P.teams = [G.team]; G.team.pIvl = 16; G.team.wIvl = 16;                                // 한 기기 안이므로 매 틱 주고받는다 (지연 없음)
-  for (let s = 1; s < n; s++) { const tm = new YC.Team({ slot: s, slots: slots, stages: opt.stages, build: YC.build, team: 0, seq0: s * 1000000, seed: seed }); tm.pIvl = 16; tm.wIvl = 16; tm.start(now, false); P.teams.push(tm); }
+  for (let s = 1; s < n; s++) { const tm = new YC.Team({ slot: s, slots: slots, stages: opt.stages, build: YC.build, team: 0, seq0: s * 1000000, seed: seed, df: df }); tm.pIvl = 16; tm.wIvl = 16; tm.start(now, false); P.teams.push(tm); }
   P.sim = { n: n, teams: P.teams, bots: [], tmul: 8, get t() { return performance.now(); } };
   P.bots = P.sim.bots;
   for (let s = 0; s < n; s++) P.bots.push(s === 0 && !P.auto ? new Guide(P.sim, 0) : new Bot(P.sim, s));   // P.auto: 시험용 — 사람 자리도 봇이 맡는다

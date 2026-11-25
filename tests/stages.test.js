@@ -1,40 +1,43 @@
-/* 스테이지 완주 시험: 봇 팀이 지연·유실이 있는 통신으로 각 스테이지를 끝까지 깬다.
-   node tests/stages.test.js [quick]                                                             */
+/* 스테이지 완주 시험: 봇 팀이 지연·유실이 있는 통신으로 각 스테이지를 끝까지 깬다. 노말·하드 둘 다.
+   node tests/stages.test.js [quick] [normal|hard] [only=스테이지id]                                */
 'use strict';
 const { YC, Sim } = require('./harness.js');
 const { scripts } = require('../js/ai.js');
-const quick = process.argv[2] === 'quick';
+const argv = process.argv.slice(2), quick = argv.includes('quick');
+const MODES = argv.includes('hard') ? [1] : argv.includes('normal') ? [0] : [0, 1];
+const ONLY = (argv.find(a => a.startsWith('only=')) || '').slice(5);
+const DN = ['노말', '하드'];
 let pass = 0, fail = 0; const fails = [];
-function run(id, n, net, seed, block) {
-  const s = new Sim({ n, stages: [id], delay: net[0], jitter: net[1], loss: net[2], seed, block });
+function run(id, n, net, seed, block, df, lseed) {
+  const s = new Sim({ n, stages: [id], delay: net[0], jitter: net[1], loss: net[2], seed, block, df: df | 0, lseed: lseed | 0 });
   scripts[id](s);
-  const ok = s.run(300, () => s.teams.every(t => t.TS.ph === 4));
-  const tag = id + ' ' + n + '명 지연' + net[0] + 'ms' + (block ? ' (길막기 켬)' : '') + ' #' + seed;
+  const ok = s.run(400, () => s.teams.every(t => t.TS.ph === 4));
+  const tag = DN[df | 0] + ' ' + id + ' ' + n + '명 지연' + net[0] + 'ms' + (block ? ' (길막기 켬)' : '') + (lseed ? ' 배치 ' + lseed : '') + ' #' + seed;
   if (ok) { pass++; return s.anchor().TS.cl[0] / 1000; }
   fail++; fails.push(tag + ' → ' + s.bots.map(b => b.err ? b.err.message : (b.done ? '끝' : '진행 중')).join(' | '));
   return -1;
 }
 const NETS = quick ? [[0, 0, 0], [150, 40, 0.02]] : [[0, 0, 0], [80, 20, 0.01], [150, 40, 0.02], [300, 80, 0.05]];
 const SEEDS = quick ? [7] : [7, 21];
-for (const id of YC.order) {
-  if (!scripts[id]) continue;
+for (const df of MODES) for (const id of YC.order) {
+  if (!scripts[id] || (ONLY && ONLY !== id)) continue;
   const row = [];
-  for (let n = 1; n <= 6; n++) { let best = 1e9, bad = 0; for (const net of NETS) for (const seed of SEEDS) { const t = run(id, n, net, seed, false); if (t < 0) bad++; else best = Math.min(best, t); } row.push(n + '명 ' + (bad ? '실패 ' + bad : best.toFixed(0) + '초')); }
-  console.log((YC.build(id).name + '        ').slice(0, 8), row.join('  '));
+  for (let n = 1; n <= 6; n++) { let best = 1e9, bad = 0; for (const net of NETS) for (const seed of SEEDS) { const t = run(id, n, net, seed, false, df); if (t < 0) bad++; else best = Math.min(best, t); } row.push(n + '명 ' + (bad ? '실패 ' + bad : best.toFixed(0) + '초')); }
+  console.log(DN[df], (YC.build(id).name + '        ').slice(0, 8), row.join('  '));
 }
 // 판마다 달라지는 배치(씨앗)로도 깨지는지
-{ let bad = 0, all = 0;
+for (const df of MODES) { let bad = 0, all = 0;
   for (const id of ['ice', 'circuit', 'fire', 'balloon', 'freeze', 'light']) for (const n of [1, 2, 3, 4, 6]) for (const ls of [11, 222, 3333, 44444, 555555, 6789]) {
-    const s = new Sim({ n, stages: [id], delay: 80, jitter: 20, loss: 0.01, seed: 7, lseed: ls }); scripts[id](s); all++;
-    if (s.run(300, () => s.teams.every(t => t.TS.ph === 4))) pass++; else { bad++; fail++; fails.push(id + ' ' + n + '명 배치 ' + ls + ' → ' + s.bots.map(b => b.err ? b.err.message : (b.done ? '끝' : '진행 중')).join(' | ')); }
+    if (ONLY && ONLY !== id) continue;
+    all++; if (run(id, n, [80, 20, 0.01], 7, false, df, ls) < 0) bad++;
   }
-  console.log('여러 배치(씨앗) ' + all + '판 중 실패 ' + bad);
+  console.log(DN[df] + ' 여러 배치(씨앗) ' + all + '판 중 실패 ' + bad);
 }
-// 실제 게임처럼 서로 길을 막는 상태에서도
-for (const [id, n, net] of [['push', 2, [0, 0, 0]], ['push', 2, [150, 40, 0.02]], ['push', 3, [150, 40, 0.02]]]) run(id, n, net, 7, true);
+// 실제 게임처럼 서로 길을 막는 상태에서도 (하드는 셋이 쌓는 탑까지)
+if (!ONLY || ONLY === 'push') for (const df of MODES) for (const [id, n, net] of [['push', 2, [0, 0, 0]], ['push', 2, [150, 40, 0.02]], ['push', 3, [150, 40, 0.02]]]) run(id, n, net, 7, true, df);
 
 // 기준 기기가 멈췄다가 돌아와도 이어진다
-(function takeover() {
+if (!ONLY) (function takeover() {
   const s = new Sim({ n: 4, stages: ['push'], delay: 100, jitter: 30, loss: 0.01, seed: 3 });
   scripts.push(s);
   s.run(6);

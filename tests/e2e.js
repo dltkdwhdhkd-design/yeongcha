@@ -56,6 +56,7 @@ async function shot(page, name) { if (SHOTS) await page.screenshot({ path: path.
   const teamsTxt = await host.evaluate(() => [...window.YCApp.H.players.values()].map(p => p.name + ':' + p.team + '/' + p.slot).join(' '));
   console.log('팀 나누기: ' + teamsTxt);
   for (const k of kids) await k.evaluate(() => window.YCTest.on());
+  if (process.env.E2E_HARD) await host.click('#hc-diff .chk:nth-child(2)');               // E2E_HARD=1: 하드로
   await host.click('#hc-start');
   const t0 = Date.now(); let lastKey = '', shots = {}, ok = false, botErr = null, directSeen = 0, directAll = 0; let tk0 = null, tkT = 0, minTps = 999;
   for (;;) {

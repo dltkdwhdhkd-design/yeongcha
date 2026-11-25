@@ -50,7 +50,7 @@ function toast(s) { const t = $('h-toast'); t.textContent = s; t.hidden = false;
 function startGame(o) {
   stopGame();
   G.solo = !!o.solo; G.names = o.names || {}; G.send = o.send || null; G.myTeam = o.team | 0; G.onQuit = o.onQuit || null; G.practice = o.practice || null; G.errShown = '';
-  G.team = new YC.Team({ slot: o.slot, slots: o.slots, stages: o.stages, build: YC.build, team: o.team | 0, spect: !o.solo, late: !!o.late, seed: o.seed | 0, seq0: Math.floor(Date.now() / 50) % 100000000 });
+  G.team = new YC.Team({ slot: o.slot, slots: o.slots, stages: o.stages, build: YC.build, team: o.team | 0, spect: !o.solo, late: !!o.late, seed: o.seed | 0, df: o.df | 0, seq0: Math.floor(Date.now() / 50) % 100000000 });
   if (o.solo) G.team.cd0 = 1.4;
   if (o.restore) G.team.restore(o.restore, performance.now());
   G.snapKey = o.snapKey || null; G.snapT = 0;
@@ -134,7 +134,7 @@ function draw(now) {
 }
 function hud(now) {
   const T = G.team, TS = T.TS, me = T.me, def = T.W.def;
-  $('h-stage').textContent = 'STAGE ' + (TS.stage + 1) + '/' + T.stages.length + ' · ' + def.name;
+  $('h-stage').textContent = 'STAGE ' + (TS.stage + 1) + '/' + T.stages.length + ' · ' + def.name + (T.df ? ' · 하드' : '');
   $('h-time').textContent = fmt(TS.ph === YC.PH_DONE ? T.total(now) : T.time(now));
   $('h-total').textContent = T.stages.length > 1 && TS.ph !== YC.PH_DONE ? '합계 ' + fmt(T.total(now)) : '';
   if (G.toastT && now > G.toastT) { $('h-toast').hidden = true; G.toastT = 0; }
@@ -164,7 +164,7 @@ function hud(now) {
   if (TS.ph === YC.PH_WAIT) { okey = 'w'; html = '<div class="t2">곧 시작해요…</div>'; }
   else if (TS.ph === YC.PH_READY) {
     const n = TS.stage === 0 && !G.solo ? Math.ceil(TS.cd) : 0; okey = 'r' + TS.stage + ':' + TS.run + ':' + n;
-    html = '<div class="t1">STAGE ' + (TS.stage + 1) + ' · ' + def.name + '</div>' + (n ? '<div class="n">' + n + '</div>' : '') + '<div class="t2">' + def.sub + '</div>';
+    html = '<div class="t1">STAGE ' + (TS.stage + 1) + ' · ' + def.name + (T.df ? ' <span class="hard">하드</span>' : '') + '</div>' + (n ? '<div class="n">' + n + '</div>' : '') + '<div class="t2">' + def.sub + '</div>';
   } else if (TS.ph === YC.PH_CLEAR) { okey = 'c' + TS.stage; html = '<div class="t1">클리어!</div><div class="t2">' + fmt(TS.cl[TS.stage]) + (TS.sk[TS.stage] ? ' (넘김)' : '') + '</div>'; }
   else if (TS.ph === YC.PH_DONE) {
     okey = 'd' + (G.rank ? G.rank.map(r => r.join('.')).join('|') : '');
@@ -190,15 +190,17 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 
 /* ═══════════════════ 혼자 연습 ═══════════════════ */
 function soloStart(stages) {
-  A.play('ui'); const nAI = +store.get('yc-ai', '3'), quit = () => { stopGame(); show('s-solo'); };
-  if (nAI > 0 && window.YCPractice) window.YCPractice.start({ stages: stages, nAI: nAI, onQuit: quit, startGame: o => startGame(Object.assign({ solo: true }, o)) });
-  else startGame({ slot: 0, slots: [0], stages: stages, solo: true, first: true, names: { 0: '나' }, onQuit: quit, seed: 1 + Math.floor(Math.random() * 999999) });
+  A.play('ui'); const nAI = +store.get('yc-ai', '3'), df = +store.get('yc-diff', '0') === 1 ? 1 : 0, quit = () => { stopGame(); show('s-solo'); };
+  if (nAI > 0 && window.YCPractice) window.YCPractice.start({ stages: stages, nAI: nAI, df: df, onQuit: quit, startGame: o => startGame(Object.assign({ solo: true }, o)) });
+  else startGame({ slot: 0, slots: [0], stages: stages, solo: true, first: true, names: { 0: '나' }, onQuit: quit, seed: 1 + Math.floor(Math.random() * 999999), df: df });
 }
 (function () {
   const box = $('solo-list');
   YC.order.forEach((id, i) => { const d = YC.build(id), b = el('button', 'stg'); b.append(el('b', null, (i + 1) + '. ' + d.name), el('small', null, d.sci)); b.onclick = () => soloStart(YC.order.slice(i)); box.append(b); });
   const ai = $('solo-ai'), paint = () => { ai.textContent = ''; for (let k = 0; k <= 5; k++) { const c = el('button', 'chk' + (+store.get('yc-ai', '3') === k ? ' on' : ''), k ? k + '명' : '없이'); c.onclick = () => { store.set('yc-ai', String(k)); A.play('ui'); paint(); }; ai.append(c); } };
   paint();
+  const dfb = $('solo-diff'), paintD = () => { dfb.textContent = ''; YC.DIFF.forEach((nm, k) => { const c = el('button', 'chk' + (+store.get('yc-diff', '0') === k ? ' on' : '') + (k ? ' hd' : ''), nm); c.onclick = () => { store.set('yc-diff', String(k)); A.play('ui'); paintD(); }; dfb.append(c); }); };
+  paintD();
   $('b-solo').onclick = () => { A.play('ui'); show('s-solo'); };
   $('b-solo-all').onclick = () => soloStart(YC.order.slice());
 })();
@@ -290,9 +292,9 @@ function beginPlay(d, me, mates) {
   subMates(me, mates);
   const slots = mates.map(p => p[3]), names = {}; mates.forEach(p => { names[p[3]] = p[1]; });
   const team = me[2], slot = me[3], sn = SNAP.get();
-  const restore = sn && sn.ver === YC.VERSION && sn.code === S.code && sn.run === d.run && sn.team === team && sn.slot === slot && Date.now() - sn.at < 180000 ? sn.s : null;
+  const df = d.df === 1 ? 1 : 0, restore = sn && sn.ver === YC.VERSION && sn.code === S.code && sn.run === d.run && (sn.df | 0) === df && sn.team === team && sn.slot === slot && Date.now() - sn.at < 180000 ? sn.s : null;
   startGame({ slot: slot, slots: slots, stages: d.st, team: team, names: names, first: (d.age | 0) < 6000 && slot === Math.min.apply(null, slots),
-    late: !!restore || (d.age | 0) >= 6000, restore: restore, seed: d.run | 0, snapKey: { ver: YC.VERSION, code: S.code, run: d.run, team: team, slot: slot },
+    late: !!restore || (d.age | 0) >= 6000, restore: restore, seed: d.run | 0, df: df, snapKey: { ver: YC.VERSION, code: S.code, run: d.run, df: df, team: team, slot: slot },
     send: (type, pay) => { if (type === 'v') Net.send('v', pay); else Net.team('t' + team + '/' + slot + '/' + type, pay); } });
   if (d.skip && d.skip[team] !== undefined) G.team.skipReq = d.skip[team];
 }
@@ -324,7 +326,7 @@ function showEnd(d, me) {
 }
 
 /* ═══════════════════ 선생님 ═══════════════════ */
-const H = { on: false, code: '', id: '', ph: 'lobby', run: 0, t0: 0, players: new Map(), seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, timer: 0, db: '', manual: false, dirty: true, lastBeat: 0, lastUi: 0, final: null, frame: 0 };
+const H = { on: false, code: '', id: '', ph: 'lobby', run: 0, df: 0, t0: 0, players: new Map(), seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, timer: 0, db: '', manual: false, dirty: true, lastBeat: 0, lastUi: 0, final: null, frame: 0 };
 const SS = { get() { try { return JSON.parse(sessionStorage.getItem('yc-host') || 'null'); } catch (e) { return null; } }, set(v) { try { if (v) sessionStorage.setItem('yc-host', JSON.stringify(v)); else sessionStorage.removeItem('yc-host'); } catch (e) {} } };
 $('b-host').onclick = () => { A.play('ui'); hostOpen(null); };
 (function () { const s = SS.get(); if (s && s.code && Date.now() - s.at < 3 * 3600 * 1000) { const b = $('b-resume'); b.hidden = false; b.textContent = '열어 둔 방 ' + s.code + ' 다시 열기'; b.onclick = () => hostOpen(s); let auto = false; try { auto = sessionStorage.getItem('yc-autoresume') === '1'; sessionStorage.removeItem('yc-autoresume'); } catch (e) {} if (auto) setTimeout(() => hostOpen(s), 50); } })();
@@ -333,9 +335,9 @@ function hostOpen(saved) {
   Object.assign(H, { on: true, ph: 'lobby', run: 0, t0: 0, seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, manual: false, dirty: true, final: null, finalStat: null, finalSplits: null, closed: false, db: '', lastUi: -1e9 });
   H.players = new Map();
   if (saved) {
-    H.code = saved.code; H.id = saved.id; H.ph = saved.ph; H.run = saved.run; H.t0 = saved.t0; H.nTeams = saved.nTeams; H.stages = saved.stages; H.manual = saved.manual; H.skip = saved.skip || {}; H.kick = saved.kick || []; H.seq = saved.seq || 0; H.final = saved.final || null; H.finalStat = saved.fstat || null; H.finalSplits = saved.fsplit || null;
+    H.code = saved.code; H.id = saved.id; H.ph = saved.ph; H.run = saved.run; H.df = saved.df === 1 ? 1 : 0; H.t0 = saved.t0; H.nTeams = saved.nTeams; H.stages = saved.stages; H.manual = saved.manual; H.skip = saved.skip || {}; H.kick = saved.kick || []; H.seq = saved.seq || 0; H.final = saved.final || null; H.finalStat = saved.fstat || null; H.finalSplits = saved.fsplit || null;
     (saved.players || []).forEach(p => H.players.set(p.id, Object.assign(p, { last: performance.now() })));
-  } else { H.code = String(1000 + Math.floor(Math.random() * 9000)); H.id = 'H' + Net.newId(); }
+  } else { H.code = String(1000 + Math.floor(Math.random() * 9000)); H.id = 'H' + Net.newId(); H.df = +store.get('yc-hdiff', '0') === 1 ? 1 : 0; }
   Net.open(H.code, H.id, hostMsg, () => { H.dirty = true; });
   Net.sub('c'); Net.sub('v');
   clearInterval(H.timer); H.timer = setInterval(hostBeat, 250);
@@ -346,7 +348,7 @@ $('hc-close').onclick = hostClose; $('he-close').onclick = hostClose;
 function hostMsg(ch, d, from) {
   if (!H.on || !d) return;
   const now = performance.now();
-  if (ch === 'v') { const k = d.k | 0; if (H.ph !== 'play' || k < 0 || k > 40) return; (H.viewers[k] || (H.viewers[k] = new YC.Viewer({ stages: H.stages, build: YC.build, seed: H.run }))).onPacket(d, now); return; }
+  if (ch === 'v') { const k = d.k | 0; if (H.ph !== 'play' || k < 0 || k > 40) return; (H.viewers[k] || (H.viewers[k] = new YC.Viewer({ stages: H.stages, build: YC.build, seed: H.run, df: H.df }))).onPacket(d, now); return; }
   if (ch !== 'c' || !from) return;
   if (d.t === 'bye') { const p = H.players.get(from); if (p) { if (H.ph === 'lobby') { H.players.delete(from); if (!H.manual) assignAll(); } else p.last = -1e9; H.dirty = true; } return; }
   if (d.t !== 'hi' || H.kick.indexOf(from) >= 0) return;
@@ -382,8 +384,8 @@ function rankNow() {
 }
 function hostSay() {
   const pl = [...H.players.values()].sort((a, b) => a.order - b.order).map(p => [p.id, p.name, p.team, p.slot]);
-  Net.say('h', { t: 'room', ver: YC.VERSION, ph: H.ph, run: H.run, age: H.ph === 'play' ? Date.now() - H.t0 : 0, st: H.stages, db: H.db, pl: pl, skip: H.skip, kick: H.kick.slice(-30), closed: H.closed ? 1 : 0, rk: H.ph === 'end' && H.final ? H.final : rankNow() });
-  SS.set({ at: Date.now(), code: H.code, id: H.id, ph: H.ph, run: H.run, t0: H.t0, nTeams: H.nTeams, stages: H.stages, manual: H.manual, skip: H.skip, kick: H.kick.slice(-30), seq: H.seq, final: H.final, fstat: H.finalStat || null, fsplit: H.finalSplits || null, players: [...H.players.values()].map(p => ({ id: p.id, name: p.name, order: p.order, team: p.team, slot: p.slot })) });
+  Net.say('h', { t: 'room', ver: YC.VERSION, ph: H.ph, run: H.run, df: H.df, age: H.ph === 'play' ? Date.now() - H.t0 : 0, st: H.stages, db: H.db, pl: pl, skip: H.skip, kick: H.kick.slice(-30), closed: H.closed ? 1 : 0, rk: H.ph === 'end' && H.final ? H.final : rankNow() });
+  SS.set({ at: Date.now(), code: H.code, id: H.id, ph: H.ph, run: H.run, df: H.df, t0: H.t0, nTeams: H.nTeams, stages: H.stages, manual: H.manual, skip: H.skip, kick: H.kick.slice(-30), seq: H.seq, final: H.final, fstat: H.finalStat || null, fsplit: H.finalSplits || null, players: [...H.players.values()].map(p => ({ id: p.id, name: p.name, order: p.order, team: p.team, slot: p.slot })) });
 }
 function hostBeat() {
   if (!H.on) return;
@@ -408,6 +410,9 @@ function hostLobby() {
   $('hc-start').disabled = !H.players.size;
   const cs = $('hc-stages'); cs.textContent = '';
   YC.order.forEach((id, i) => { const b = el('button', 'chk' + (H.stages.indexOf(id) >= 0 ? ' on' : ''), (i + 1) + ' ' + YC.build(id).name); b.onclick = () => { const at = H.stages.indexOf(id); if (at >= 0) { if (H.stages.length > 1) H.stages.splice(at, 1); } else H.stages = YC.order.filter(x => x === id || H.stages.indexOf(x) >= 0); H.dirty = true; hostBeat(); }; cs.append(b); });
+  const dfb = $('hc-diff'); dfb.textContent = '';
+  YC.DIFF.forEach((nm, k) => { const b = el('button', 'chk' + (H.df === k ? ' on' : '') + (k ? ' hd' : ''), nm); b.onclick = () => { if (H.df === k) return; H.df = k; store.set('yc-hdiff', String(k)); A.play('ui'); H.dirty = true; hostBeat(); }; dfb.append(b); });
+  $('hc-dnote').textContent = H.df ? '하드: 더 많은 사람이 더 정확하게 맞춰야 해요 (셋이 탑 쌓기, 스위치 더 많이, 더 오래 버티기)' : '노말: 처음 하는 반에 알맞아요';
   const box = $('hc-teams'); box.textContent = '';
   const now = performance.now();
   for (let k = 0; k < Math.max(T, 1); k++) {
@@ -433,7 +438,7 @@ $('hc-start').onclick = () => {
 $('hp-end').onclick = () => { if (!confirm('지금 끝내고 결과를 볼까요?')) return; H.ph = 'end'; H.final = rankNow(); H.finalStat = collectStats(); H.finalSplits = collectSplits(); H.dirty = true; hostBeat(); A.play('done'); };
 $('he-again').onclick = () => { H.ph = 'lobby'; H.viewers = {}; H.vr = {}; H.final = null; H.dirty = true; hostBeat(); };
 function hostPlayUi() {
-  $('hp-code').textContent = '방 ' + H.code;
+  $('hp-code').textContent = '방 ' + H.code + ' · ' + YC.DIFF[H.df];
   const box = $('hp-views'); box.textContent = ''; H.vr = {};
   const teams = {}; H.players.forEach(p => { (teams[p.team] || (teams[p.team] = [])).push(p); });
   Object.keys(teams).sort((a, b) => a - b).forEach(k => {

@@ -1,17 +1,19 @@
 /* 혼자 연습(AI 친구) 시험: 실제 브라우저에서 사람 자리까지 봇이 맡아 열 스테이지를 끝까지 이어서 깬다.
-   node tests/practice.js [AI 친구 수=3] [찍을 폴더]                                                       */
+   node tests/practice.js [AI 친구 수=3] [찍을 폴더] [hard]                                                 */
 'use strict';
 const path = require('path');
 const { chromium } = require(process.env.PLAYWRIGHT || '/opt/npm-tools/node_modules/playwright');
 const { serve } = require('../tools/serve.js');
-const NAI = +(process.argv[2] || 3), SHOTS = process.argv[3] || '';
+const DF = process.argv.includes('hard') ? 1 : 0, args = process.argv.slice(2).filter(a => a !== 'hard');
+const NAI = +(args[0] || 3), SHOTS = args[1] || '';
 (async () => {
   const web = await serve(path.resolve(__dirname, '..') + '/');
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   const page = await (await browser.newContext({ viewport: { width: 960, height: 540 } })).newPage();
   const errors = []; page.on('pageerror', e => { errors.push(e.message); console.log('  [오류] ' + e.message); });
   await page.goto('http://127.0.0.1:' + web.address().port + '/');
-  await page.evaluate(n => { localStorage.setItem('yc-ai', String(n)); window.YCPractice.auto = true; }, NAI);
+  await page.evaluate(([n, df]) => { localStorage.setItem('yc-ai', String(n)); localStorage.setItem('yc-diff', String(df)); window.YCPractice.auto = true; }, [NAI, DF]);
+  console.log(DF ? '하드' : '노말', 'AI 친구 ' + NAI + '명');
   await page.click('#b-solo'); await page.click('#b-solo-all');
   await page.evaluate(() => { const G = window.YCApp.G; G.bot = inp => { const b = window.YCPractice.bots[0]; if (b) { inp.l = b.inp.l; inp.r = b.inp.r; inp.j = b.inp.j; inp.jp = b.inp.jp; inp.en = b.inp.en; } }; });
   const t0 = Date.now(); let last = '', ok = false;
