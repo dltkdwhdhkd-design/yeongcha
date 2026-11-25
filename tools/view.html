@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>view</title>
+<style>body{margin:0;background:#222}canvas{display:block}</style>
+<canvas id="c"></canvas>
+<script src="../js/core.js"></script><script src="../js/levels.js"></script><script src="../js/render.js"></script>
+<script>
+const q = new URLSearchParams(location.search), id = q.get('s') || 'push', n = +(q.get('n') || 4), fx = +(q.get('x') || 300);
+const W = new YC.World(YC.build(id)); W.n = n;
+const cv = document.getElementById('c'), R = new YCRender(cv);
+const full = q.has('full');
+if (full) { R.fit(W.w, YC.VIEW_H, 1); R.vw = W.w; R.sc = 1; cv.width = W.w; cv.height = YC.VIEW_H; }
+else R.fit(960, 544, 1);
+window.W = W; window.R = R; window.people = [];
+window.paint = function (t) { W.buildSolids(); R.cam.set = false; R.draw({ W, people: window.people, me: 0, names: { 1: '민지', 2: '도윤', 3: '서연', 4: '하준', 5: '지호' }, ck: +(q.get('ck') || 0), t: t || 1.2, focus: full ? { x: W.w / 2, y: 300 } : { x: fx, y: 388 } }); };
+window.paint();
+</script>

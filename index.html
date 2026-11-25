@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#aee3ff">
+<title>영차영차 — 힘을 모아야 넘어가는 협동 타임어택</title>
+<link rel="stylesheet" href="css/style.css?v=1">
+</head>
+<body>
+
+<!-- 첫 화면 -->
+<section id="s-title" class="scr on">
+  <div class="card title">
+    <canvas id="logo-cv" width="560" height="150"></canvas>
+    <h1>영차영차<span>!</span></h1>
+    <p class="sub">힘을 모아야만 넘어가는 협동 타임어택</p>
+    <div class="col">
+      <button class="btn big green" id="b-join">참가하기 <small>학생</small></button>
+      <button class="btn big blue" id="b-host">방 만들기 <small>선생님</small></button>
+      <button class="btn" id="b-solo">혼자 연습</button>
+    </div>
+    <button class="btn slim" id="b-resume" hidden></button>
+    <p class="foot">중1 과학 · 힘의 작용 (알짜힘 · 마찰력 · 탄성력 · 부력)</p>
+  </div>
+</section>
+
+<!-- 학생: 참가 -->
+<section id="s-join" class="scr">
+  <div class="card">
+    <h2>참가하기</h2>
+    <label>별명 <input id="in-name" maxlength="8" placeholder="8자까지" autocomplete="off"></label>
+    <label>방 코드 <input id="in-code" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="숫자 4자리" autocomplete="off"></label>
+    <p class="msg" id="join-msg"></p>
+    <div class="row">
+      <button class="btn" data-go="s-title">뒤로</button>
+      <button class="btn green" id="b-enter">들어가기</button>
+    </div>
+    <p class="foot">별명만 적어 주세요. 진짜 이름은 쓰지 않아요.</p>
+  </div>
+</section>
+
+<!-- 학생: 대기 -->
+<section id="s-wait" class="scr">
+  <div class="card wide">
+    <div class="row between"><h2>방 <b id="w-code"></b></h2><span class="net" id="w-net"></span></div>
+    <div class="mebox"><canvas id="w-face" width="132" height="144"></canvas><div><div class="mename" id="w-name"></div><div class="meteam" id="w-team"></div></div></div>
+    <div class="teams" id="w-teams"></div>
+    <p class="msg" id="w-msg">선생님이 시작하면 바로 시작해요.</p>
+    <div class="keys"><span><kbd>←</kbd><kbd>→</kbd> 걷기</span><span><kbd>Space</kbd> 또는 <kbd>↑</kbd> 점프</span><span><kbd>↓</kbd> 문 들어가기</span></div>
+    <div class="row"><button class="btn" id="b-leave">나가기</button></div>
+  </div>
+</section>
+
+<!-- 혼자 연습 -->
+<section id="s-solo" class="scr">
+  <div class="card wide">
+    <h2>혼자 연습</h2>
+    <p class="msg">혼자서는 못 넘는 곳에 파란 디딤돌이 생겨요. 진짜 재미는 넷이 할 때!</p>
+    <div class="stages" id="solo-list"></div>
+    <div class="row"><button class="btn" data-go="s-title">뒤로</button><button class="btn green" id="b-solo-all">처음부터 이어서</button></div>
+  </div>
+</section>
+
+<!-- 게임 화면 -->
+<section id="s-play" class="scr play">
+  <canvas id="cv"></canvas>
+  <div class="hud top">
+    <div class="pill" id="h-stage"></div>
+    <div class="timer"><b id="h-time">0:00.0</b><small id="h-total"></small></div>
+    <div class="right">
+      <div class="pill" id="h-rank" hidden></div>
+      <button class="ib" id="b-vote" title="스테이지 다시 시작 (R)">↺</button>
+      <button class="ib" id="b-mute" title="소리 (M)">🔊</button>
+      <button class="ib" id="b-full" title="전체 화면">⛶</button>
+      <button class="ib" id="b-quit" title="나가기" hidden>✕</button>
+    </div>
+  </div>
+  <div class="mates" id="h-mates"></div>
+  <div class="netdot" id="h-net"></div>
+  <div class="toast" id="h-toast" hidden></div>
+  <div class="vote" id="h-vote" hidden></div>
+  <div class="hint" id="h-hint" hidden></div>
+  <div class="over" id="h-over" hidden><div class="obox" id="h-obox"></div></div>
+  <div class="touch" id="touch" hidden>
+    <div class="tl"><button class="tb" data-k="l">◀</button><button class="tb" data-k="r">▶</button></div>
+    <div class="tr"><button class="tb door" data-k="en" id="t-door" hidden>문</button><button class="tb jump" data-k="j">점프</button></div>
+  </div>
+</section>
+
+<!-- 학생: 결과 -->
+<section id="s-end" class="scr">
+  <div class="card wide">
+    <h2>결과</h2>
+    <div class="big" id="e-mine"></div>
+    <div class="rank" id="e-rank"></div>
+    <div class="row"><button class="btn" id="b-end-back">처음으로</button></div>
+  </div>
+</section>
+
+<!-- 선생님 화면 -->
+<section id="s-host" class="scr host">
+  <div id="h-lobby" class="hview">
+    <div class="hl">
+      <div class="codebox"><small>방 코드</small><b id="hc-code"></b><span id="hc-url"></span></div>
+      <p class="msg" id="hc-net"></p>
+      <div class="set">
+        <div class="setrow"><span>팀 수</span><button class="ib" id="hc-tm">−</button><b id="hc-tn"></b><button class="ib" id="hc-tp">＋</button><button class="btn slim" id="hc-auto">고르게 다시 나누기</button><button class="btn slim" id="hc-shuffle">섞기</button></div>
+        <div class="setrow"><span>스테이지</span><div class="chips" id="hc-stages"></div></div>
+      </div>
+      <div class="row"><button class="btn" id="hc-close">방 닫기</button><button class="btn big green" id="hc-start">시작!</button></div>
+      <p class="foot">이름표를 누른 뒤 옮길 팀을 누르면 팀이 바뀝니다. 이름표를 두 번 누르면 내보냅니다.<br>한 팀은 2~6명, 4명이 가장 재미있어요.</p>
+    </div>
+    <div class="hr"><div class="teams big" id="hc-teams"></div></div>
+  </div>
+  <div id="h-play" class="hview" hidden>
+    <div class="hl narrow">
+      <div class="row between"><h2>실시간 순위</h2><span class="pill" id="hp-code"></span></div>
+      <div class="rank" id="hp-rank"></div>
+      <p class="msg" id="hp-net"></p>
+      <div class="row"><button class="btn" id="hp-end">끝내고 결과 보기</button></div>
+      <p class="foot">막힌 팀은 화면 아래 "넘기기"로 다음 스테이지로 보낼 수 있어요(벌칙 1분 30초).</p>
+    </div>
+    <div class="hr"><div class="views" id="hp-views"></div></div>
+  </div>
+  <div id="h-end" class="hview" hidden>
+    <div class="endwrap">
+      <h2>결과 발표</h2>
+      <div class="podium" id="he-podium"></div>
+      <div class="cols"><div class="rank" id="he-table"></div><div><div class="awards" id="he-awards"></div><div class="sci" id="he-sci"></div></div></div>
+      <div class="row"><button class="btn" id="he-close">방 닫기</button><button class="btn big green" id="he-again">같은 방에서 한 판 더</button></div>
+    </div>
+  </div>
+</section>
+
+<script src="js/core.js?v=1"></script>
+<script src="js/levels.js?v=1"></script>
+<script src="js/net.js?v=1"></script>
+<script src="js/audio.js?v=1"></script>
+<script src="js/render.js?v=1"></script>
+<script src="js/app.js?v=1"></script>
+</body>
+</html>
