@@ -755,7 +755,8 @@ Team.prototype.setSlots = function (slots) {
 Team.prototype.votes = function () { let v = this.me.vote ? 1 : 0, n = 1; for (const s of this.slots) if (s !== this.slot) { const g = this.ghosts[s]; if (g.present) { n++; if (g.rep && g.rep.vote && g.rep.sr === this.sr()) v++; } } return [v, n]; };
 Team.prototype.load = function () {
   const TS = this.TS, me = this.me;
-  this.W = new World(this.build(this.stages[TS.stage], lseed(this.seed, TS.stage)));
+  const ls = lseed(this.seed, TS.stage); this.W = new World(this.build(this.stages[TS.stage], ls));
+  this.lkey = this.stages[TS.stage] + ':' + ls + ':' + this.W.objs.length + ':' + VERSION;
   this.W.n = TS.n; this.ws = new Stream(); this.hist.length = 0;
   me.fin = false; me.ck = 0; me.vote = 0; me.ldSeq = 0; me.ldObj = 0; me.kseen = {}; me.want = false; me.ul = false; me.atExit = false;
   for (const o of this.W.kickers) me.kseen[o.id] = 0;
@@ -802,6 +803,8 @@ Team.prototype.onWorld = function (from, d, now) {
   this.wq = d.q; this.lastW = now;
   const ts = d.ts, TS = this.TS, ph0 = TS.ph, first = !this.heard; this.heard = true;
   if (ts[0] !== TS.stage || ts[1] !== TS.run) { TS.stage = ts[0]; TS.run = ts[1]; TS.n = ts[5]; this.load(); }
+  if (d.lk && d.lk !== this.lkey) { this.mism = (this.mism || 0) + 1; return; }       // 다른 판(옛 캐시·다른 배치)의 상태는 받지 않는다: 상자가 엉뚱하게 사라지는 일을 막는다
+  this.mism = 0;
   TS.ph = ts[2]; TS.tm = ts[3]; TS.ck = ts[4]; TS.n = ts[5]; TS.cd = ts[6] / 100; if (d.cl) TS.cl = d.cl; if (d.sk) TS.sk = d.sk; this.tmAt = now;
   if (first && this.late && TS.ck > this.me.ck && !this.me.fin) { this.me.ck = TS.ck; spawnAt(this.me, this.W, this.idx, TS.ck); }   // 늦게 온 사람은 팀이 지난 마지막 깃발에서 시작
   if (ph0 !== TS.ph) { if (TS.ph === PH_CLEAR) this.ev.push(['clear']); else if (TS.ph === PH_DONE) this.ev.push(['done']); else if (TS.ph === PH_PLAY && ph0 === PH_READY) this.ev.push(['go']); }
@@ -970,7 +973,7 @@ Team.prototype.send = function (now) {
   const TS = this.TS, o = this.W.pack(), key = JSON.stringify(o) + TS.ph + TS.stage + ':' + TS.run + ':' + TS.ck + ':' + TS.n;
   if (now - this.lastWT >= (key === this.lastO ? 250 : this.wIvl)) {
     this.lastO = key; this.lastWT = now;
-    this.out.push(['w', { e: this.epoch, q: ++this.wseq, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100)], cl: TS.cl, sk: TS.sk, o: o }]);
+    this.out.push(['w', { lk: this.lkey, e: this.epoch, q: ++this.wseq, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100)], cl: TS.cl, sk: TS.sk, o: o }]);
   }
   if (this.spect && now - this.lastVT >= this.vIvl) {
     this.lastVT = now;
@@ -980,7 +983,7 @@ Team.prototype.send = function (now) {
     st[this.slot] = m.stat.map(r1);
     for (const s of this.slots) if (s !== this.slot) { const g = this.ghosts[s]; if (g.vis) pl.push([s, r0(g.x), r0(g.y), fo(g.cur || g.rep)]); if (g.stat) st[s] = g.stat; }
     let present = 0; for (const s of this.slots) if (s === this.slot || this.ghosts[s].present) present |= 1 << s;
-    this.out.push(['v', { k: this.team, a: this.slot, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100)], cl: TS.cl, sk: TS.sk, o: o, pl: pl, st: st, pr: present }]);
+    this.out.push(['v', { lk: this.lkey, k: this.team, a: this.slot, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100)], cl: TS.cl, sk: TS.sk, o: o, pl: pl, st: st, pr: present }]);
   }
 };
 /* 그릴 사람들 */
@@ -999,7 +1002,8 @@ Viewer.prototype.onPacket = function (d, now) {
   if (!d || !d.ts || !d.o) return;
   if (d.a === this.a && d.t <= this.q && this.q - d.t < 5000) return;
   const ts = d.ts, key = ts[0] * 64 + (ts[1] % 64), TS = this.TS;
-  if (key !== this.key || !this.W) { if (ts[0] >= this.stages.length) return; this.key = key; this.W = new World(this.build(this.stages[ts[0]], lseed(this.seed, ts[0]))); this.st = new Stream(260); }
+  if (key !== this.key || !this.W) { if (ts[0] >= this.stages.length) return; this.key = key; const ls = lseed(this.seed, ts[0]); this.W = new World(this.build(this.stages[ts[0]], ls)); this.lkey = this.stages[ts[0]] + ':' + ls + ':' + this.W.objs.length + ':' + VERSION; this.st = new Stream(260); }
+  if (d.lk && d.lk !== this.lkey) { this.mism = (this.mism || 0) + 1; return; }
   if (d.a !== this.a) { this.a = d.a; this.st = new Stream(260); }
   this.q = d.t;
   TS.stage = ts[0]; TS.run = ts[1]; TS.ph = ts[2]; TS.tm = ts[3]; TS.ck = ts[4]; TS.n = ts[5]; TS.cd = ts[6] / 100; TS.cl = d.cl || []; TS.sk = d.sk || [];
@@ -1021,7 +1025,7 @@ Viewer.prototype.update = function (now) {
 Viewer.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH_PLAY && now - this.last < 3000 ? TS.tm + (now - this.tmAt) : TS.tm; };
 Viewer.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
 
-const VERSION = 4;                               // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
+const VERSION = 5;                               // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
 const YC = { VERSION, T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
   opt, lseed, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
 if (typeof module !== 'undefined' && module.exports) module.exports = YC; else root.YC = YC;
