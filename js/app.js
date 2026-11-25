@@ -49,8 +49,10 @@ function toast(s) { const t = $('h-toast'); t.textContent = s; t.hidden = false;
 function startGame(o) {
   stopGame();
   G.solo = !!o.solo; G.names = o.names || {}; G.send = o.send || null; G.myTeam = o.team | 0; G.onQuit = o.onQuit || null;
-  G.team = new YC.Team({ slot: o.slot, slots: o.slots, stages: o.stages, build: YC.build, team: o.team | 0, spect: !o.solo, seq0: Math.floor(Date.now() / 50) % 100000000 });
+  G.team = new YC.Team({ slot: o.slot, slots: o.slots, stages: o.stages, build: YC.build, team: o.team | 0, spect: !o.solo, late: !!o.late, seq0: Math.floor(Date.now() / 50) % 100000000 });
   if (o.solo) G.team.cd0 = 1.4;
+  if (o.restore) G.team.restore(o.restore, performance.now());
+  G.snapKey = o.snapKey || null; G.snapT = 0;
   G.team.start(performance.now(), !!o.first);
   show('s-play'); fitCanvas();
   G.on = true; G.last = performance.now(); G.acc = 0; G.pj = 0; G.okey = ''; G.voteUntil = 0; G.stageSeen = -1; G.rttT = 0; G.keys = {}; G.touch = {}; G.matesKey = ''; G.R.cam.set = false; G.R.fx.length = 0;
@@ -81,6 +83,7 @@ function tick(now) {
     G.rtt = st.rtt || 0; T.selfDelay = dir ? 20 : Math.min(400, G.rtt); T.pIvl = dir ? 50 : 80; T.wIvl = dir ? 66 : 100; T.vIvl = 250;
   }
   T.tick(inp, 1 / 60, now);
+  if (G.snapKey && now - G.snapT > 1000 && (T.heard || T.anchor)) { G.snapT = now; SNAP.set(Object.assign({ at: Date.now(), s: T.snap(now) }, G.snapKey)); }   // 새로 고침 대비
   for (const e of T.ev) onEvent(e, now, T);
   T.ev.length = 0;
   if (G.send) for (const m of T.out) G.send(m[0], m[1]);
@@ -193,6 +196,7 @@ function soloStart(stages) { A.play('ui'); startGame({ slot: 0, slots: [0], stag
 const S = { on: false, id: '', name: '', code: '', room: null, joined: false, run: -1, playTeam: -1, playSlot: -1, hello: 0, subs: [], slotKey: '', hiAt: 0, meshWant: '', meshNow: '', meshAt: 0 };
 const TAB = Net.newId(), BC = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('yeongcha') : null;
 const JS = { get() { try { return JSON.parse(sessionStorage.getItem('yc-join') || 'null'); } catch (e) { return null; } }, set(v) { try { if (v) sessionStorage.setItem('yc-join', JSON.stringify(v)); else sessionStorage.removeItem('yc-join'); } catch (e) {} } };
+const SNAP = { get() { try { return JSON.parse(sessionStorage.getItem('yc-snap') || 'null'); } catch (e) { return null; } }, set(v) { try { if (v) sessionStorage.setItem('yc-snap', JSON.stringify(v)); else sessionStorage.removeItem('yc-snap'); } catch (e) {} } };
 if (BC) BC.onmessage = e => {                                                               // 같은 기기의 다른 탭에서 같은 방에 또 들어오면 이 탭은 물러난다
   const m = e.data; if (!m || m.t !== 'join' || !S.on || m.code !== S.code || m.id !== S.id || m.tab === TAB) return;
   S.on = false; clearInterval(S.hello); stopGame(); Net.close(); JS.set(null); show('s-title'); setTimeout(() => alert('다른 탭에서 같은 방에 들어와서 이 탭은 나갔어요.'), 50);
@@ -226,7 +230,7 @@ function studentBeat() {
 }
 function leaveRoom(msg) {
   if (S.on) Net.say('c', { t: 'bye' });
-  JS.set(null);
+  JS.set(null); SNAP.set(null);
   S.on = false; clearInterval(S.hello); stopGame(); setTimeout(() => { if (!S.on && !H.on) Net.close(); }, 300);
   show('s-title'); if (msg) setTimeout(() => alert(msg), 50);
 }
@@ -247,6 +251,7 @@ function onRoom(d) {
   S.joined = true;
   const mates = d.pl.filter(p => p[2] === me[2]);
   G.rank = d.rk || null; G.myTeam = me[2];
+  if (d.ph !== 'play' && G.snapKey) { G.snapKey = null; SNAP.set(null); }
   if (d.ph === 'lobby') {
     S.run = -1; if (G.on) stopGame(); show('s-wait'); updateWait();
     const want = mates.filter(p => p[0] !== S.id).map(p => p[0]).sort().join(','); if (want !== S.meshWant) { S.meshWant = want; S.meshAt = Date.now(); }
@@ -272,8 +277,10 @@ function beginPlay(d, me, mates) {
   for (const t of S.subs) Net.unsub(t); S.subs = [];
   subMates(me, mates);
   const slots = mates.map(p => p[3]), names = {}; mates.forEach(p => { names[p[3]] = p[1]; });
-  const team = me[2], slot = me[3];
+  const team = me[2], slot = me[3], sn = SNAP.get();
+  const restore = sn && sn.code === S.code && sn.run === d.run && sn.team === team && sn.slot === slot && Date.now() - sn.at < 180000 ? sn.s : null;
   startGame({ slot: slot, slots: slots, stages: d.st, team: team, names: names, first: (d.age | 0) < 6000 && slot === Math.min.apply(null, slots),
+    late: !!restore || (d.age | 0) >= 6000, restore: restore, snapKey: { code: S.code, run: d.run, team: team, slot: slot },
     send: (type, pay) => { if (type === 'v') Net.send('v', pay); else Net.team('t' + team + '/' + slot + '/' + type, pay); } });
   if (d.skip && d.skip[team] !== undefined) G.team.skipReq = d.skip[team];
 }
@@ -311,7 +318,7 @@ $('b-host').onclick = () => { A.play('ui'); hostOpen(null); };
 (function () { const s = SS.get(); if (s && s.code && Date.now() - s.at < 3 * 3600 * 1000) { const b = $('b-resume'); b.hidden = false; b.textContent = '열어 둔 방 ' + s.code + ' 다시 열기'; b.onclick = () => hostOpen(s); } })();
 function hostOpen(saved) {
   stopGame(); S.on = false; clearInterval(S.hello);
-  Object.assign(H, { on: true, ph: 'lobby', run: 0, t0: 0, seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, manual: false, dirty: true, final: null, finalStat: null, finalSplits: null, closed: false, db: '' });
+  Object.assign(H, { on: true, ph: 'lobby', run: 0, t0: 0, seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, manual: false, dirty: true, final: null, finalStat: null, finalSplits: null, closed: false, db: '', lastUi: -1e9 });
   H.players = new Map();
   if (saved) {
     H.code = saved.code; H.id = saved.id; H.ph = saved.ph; H.run = saved.run; H.t0 = saved.t0; H.nTeams = saved.nTeams; H.stages = saved.stages; H.manual = saved.manual; H.skip = saved.skip || {}; H.kick = saved.kick || []; H.seq = saved.seq || 0; H.final = saved.final || null; H.finalStat = saved.fstat || null; H.finalSplits = saved.fsplit || null;

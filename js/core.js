@@ -694,6 +694,7 @@ function Team(o) {
   this.out = []; this.ev = []; this.seq = o.seq0 || 0; this.wseq = o.seq0 || 0; this.lastPT = -1e9; this.lastWT = -1e9; this.lastVT = -1e9; this.lastP = null; this.lastO = ''; this.statT = 0;
   this.hist = []; this.selfDelay = 0; this.R = []; this.live = null; this.tmAt = 0; this.cd0 = 3; this.skipReq = -1; this.lastRestart = -1e9; this.now = 0;
   this.pIvl = 66; this.wIvl = 83; this.vIvl = 200; this.burst = 0; this.team = o.team | 0; this.spect = !!o.spect;
+  this.late = !!o.late; this.heard = false;                                              // late: 게임 중간에 (다시) 들어옴. heard: 팀 상태를 한 번이라도 받음
   this.load();
 }
 Team.prototype.sr = function () { return this.TS.stage * 64 + (this.TS.run % 64); };
@@ -726,8 +727,11 @@ Team.prototype.becomeAnchor = function () {
 Team.prototype.role = function (now) {
   if (this.anchor || this.t0 < 0) return;
   const quiet = now - max(this.lastW, this.t0);
-  let rank = 0; for (const s of this.slots) if (s < this.slot && this.ghosts[s] && now - this.ghosts[s].last < 3000) rank++;
-  if (quiet > (this.seenEp === 0 ? 1200 : 1800) + 500 * rank) this.becomeAnchor();
+  let rank = 0, here = 0; for (const s of this.slots) if (s !== this.slot && this.ghosts[s] && now - this.ghosts[s].last < 3000) { here++; if (s < this.slot) rank++; }
+  // 중간에 (다시) 들어온 기기는 팀이 어디까지 왔는지 모른다. 팀원이 있으면 그쪽이 이어받을 때까지 기다린다
+  // (새로 고침한 기준 기기가 빈 상태로 먼저 나서면 팀 전체가 첫 스테이지로 돌아가 버린다)
+  const wait = this.late && !this.heard && here ? 7000 : this.seenEp === 0 ? 1200 : 1800;
+  if (quiet > wait + 500 * rank) this.becomeAnchor();
 };
 Team.prototype.onPlayer = function (from, p, now) {
   const g = this.ghosts[from]; if (!g || !p) return;
@@ -748,15 +752,29 @@ Team.prototype.onWorld = function (from, d, now) {
   if (e > this.seenEp || from !== this.aSlot) { this.seenEp = e; this.aSlot = from; this.ws = new Stream(); this.wq = -1; }
   if (d.q <= this.wq && this.wq - d.q < 2000) return;
   this.wq = d.q; this.lastW = now;
-  const ts = d.ts, TS = this.TS, ph0 = TS.ph;
+  const ts = d.ts, TS = this.TS, ph0 = TS.ph, first = !this.heard; this.heard = true;
   if (ts[0] !== TS.stage || ts[1] !== TS.run) { TS.stage = ts[0]; TS.run = ts[1]; TS.n = ts[5]; this.load(); }
   TS.ph = ts[2]; TS.tm = ts[3]; TS.ck = ts[4]; TS.n = ts[5]; TS.cd = ts[6] / 100; if (d.cl) TS.cl = d.cl; if (d.sk) TS.sk = d.sk; this.tmAt = now;
+  if (first && this.late && TS.ck > this.me.ck && !this.me.fin) { this.me.ck = TS.ck; spawnAt(this.me, this.W, this.idx, TS.ck); }   // 늦게 온 사람은 팀이 지난 마지막 깃발에서 시작
   if (ph0 !== TS.ph) { if (TS.ph === PH_CLEAR) this.ev.push(['clear']); else if (TS.ph === PH_DONE) this.ev.push(['done']); else if (TS.ph === PH_PLAY && ph0 === PH_READY) this.ev.push(['go']); }
   this.ws.push(d.t, d.o, now);
 };
 /* 화면에 보이는 경과 시간(ms) */
 Team.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH_PLAY && !this.anchor ? TS.tm + (now - this.tmAt) : TS.tm; };
 Team.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
+/* 새로 고침 대비: 지금 팀 상태를 적어 둔다 / 적어 둔 것으로 되살린다.
+   팀원이 남아 있으면 그쪽 상태가 이기고(기다리다 받는다), 팀에 나 혼자였거나 모두 새로 고침했을 때만 이것으로 이어 간다 */
+Team.prototype.snap = function (now) { const TS = this.TS; return { st: TS.stage, run: TS.run, ph: TS.ph, tm: r0(this.time(now)), ck: TS.ck, cl: TS.cl.slice(), sk: TS.sk.slice(), ep: this.seenEp, o: this.W.pack() }; };
+Team.prototype.restore = function (s, now) {
+  const TS = this.TS; if (!s || !(s.st >= 0) || s.st >= this.stages.length || this.heard) return false;
+  TS.stage = s.st; TS.run = s.run | 0; TS.cl = s.cl || []; TS.sk = s.sk || []; TS.ck = s.ck | 0;
+  this.load();
+  if (Array.isArray(s.o) && s.o.length === this.W.objs.length) this.W.apply(s.o, s.o, 0);
+  TS.tm = s.tm || 0; this.tmAt = now; this.seenEp = s.ep | 0;
+  if (s.ph === PH_DONE) TS.ph = PH_DONE; else if (s.ph === PH_CLEAR) { TS.ph = PH_CLEAR; TS.cd = 1; } else { TS.ph = PH_PLAY; TS.cd = 0; }
+  if (TS.ck > 0) { this.me.ck = TS.ck; spawnAt(this.me, this.W, this.idx, TS.ck); }
+  return true;
+};
 
 Team.prototype.myRep = function () {
   const m = this.me;

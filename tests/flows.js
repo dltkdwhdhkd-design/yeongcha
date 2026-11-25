@@ -37,11 +37,11 @@ function broker() {
   check('기준 기기는 한 대', sa.anchor !== sb.anchor, 'A=' + sa.anchor + ' B=' + sb.anchor);
   if (RTC) check('팀원끼리 직접 연결', sa.direct === 1 && sb.direct === 1);
 
-  // 키보드로 움직이면 상대 화면에 보인다
-  await a.keyboard.down('ArrowRight'); await sleep(700); await a.keyboard.up('ArrowRight'); await sleep(900);
-  sa = await st(a); sb = await st(b);
-  const gA = sb.ghosts.find(g => g.s === sa.slot);
-  check('A가 걸으면 B 화면에서도 같은 자리에 보임', gA && gA.vis && Math.abs(gA.x - sa.x) < 6 && sa.x > 100, 'A x=' + Math.round(sa.x) + ', B가 본 A x=' + (gA && gA.x));
+  // 키보드로 움직이면 상대 화면에 보인다 (앞에 선 사람이 걷는다. 뒤에 선 사람은 앞사람에게 막힌다)
+  const [fw, bk] = sa.slot > sb.slot ? [a, b] : [b, a], x0 = (await st(fw)).x;
+  await fw.keyboard.down('ArrowRight'); await sleep(700); await fw.keyboard.up('ArrowRight'); await sleep(900);
+  const sf = await st(fw), sk2 = await st(bk), gF = sk2.ghosts.find(g => g.s === sf.slot);
+  check('앞사람이 걸으면 다른 화면에서도 같은 자리에 보임', gF && gF.vis && Math.abs(gF.x - sf.x) < 6 && sf.x > x0 + 60, '걸은 사람 x ' + Math.round(x0) + '→' + Math.round(sf.x) + ', 다른 화면에서 본 x=' + (gF && gF.x));
 
   // 기준 기기가 아닌 쪽이 새로 고침
   const [anc, oth] = sa.anchor ? [a, b] : [b, a];
@@ -50,6 +50,7 @@ function broker() {
   const back = await until(async () => { const s = await st(oth); return s.on && s.ph === 2 && s.slot === slotOth ? s : null; }, 10000);
   check('새로 고침하면 저절로 같은 자리로 돌아옴', back, back ? '' : JSON.stringify(await st(oth)));
   check('돌아온 뒤에도 기준 기기는 한 대', await until(async () => (await st(anc)).anchor && !(await st(oth)).anchor, 5000));
+  check('새로 고침한 기기가 팀 상태를 다시 받음', await until(() => oth.evaluate(() => window.YCApp.G.team.heard), 5000));
 
   // 기준 기기가 새로 고침 → 다른 기기가 이어받는다
   const tm0 = await anc.evaluate(() => window.YCApp.G.team.TS.tm);
@@ -57,8 +58,17 @@ function broker() {
   const took = await until(async () => { const s = await st(oth); return s.anchor && s.ep >= 2 ? s : null; }, 8000);
   check('기준 기기가 사라지면 다른 기기가 이어받음', took);
   const one = await until(async () => { const x = await st(a), y = await st(b); return x.on && y.on && x.ph === 2 && y.ph === 2 && (x.anchor ? 1 : 0) + (y.anchor ? 1 : 0) === 1; }, 12000);
-  const tm1 = await oth.evaluate(() => window.YCApp.G.team.TS.tm);
-  check('돌아온 뒤 기준 기기 한 대, 시간은 이어서 흐름', one && tm1 > tm0, '시간 ' + Math.round(tm0) + ' → ' + Math.round(tm1));
+  const desc = p => p.evaluate(() => { const T = window.YCApp.G.team; return T ? (T.anchor ? '기준' : '-') + ' ep' + T.seenEp + ' 스테이지' + T.TS.stage + '.' + T.TS.run + ' 단계' + T.TS.ph + ' 시간' + Math.round(T.time(performance.now())) : '없음'; });
+  const tm1 = await oth.evaluate(() => window.YCApp.G.team.time(performance.now()));
+  check('돌아온 뒤 기준 기기 한 대, 시간은 이어서 흐름', one && tm1 > tm0, '시간 ' + Math.round(tm0) + ' → ' + Math.round(tm1) + ' [새로 고침한 쪽 ' + await desc(anc) + ' / 이어받은 쪽 ' + await desc(oth) + ']');
+
+  // 둘이 거의 동시에 새로 고침 (팀 상태를 가진 기기가 잠깐 하나도 없음): 각자 적어 둔 상태로 이어 간다
+  await until(() => anc.evaluate(() => window.YCApp.G.team.heard), 5000); await sleep(1200);
+  const tw0 = await oth.evaluate(() => window.YCApp.G.team.time(performance.now()));
+  await Promise.all([a.reload(), b.reload()]);
+  const both = await until(async () => { const x = await st(a), y = await st(b); return x.on && y.on && x.ph === 2 && y.ph === 2 && x.stage === 0 && y.stage === 0 && (x.anchor ? 1 : 0) + (y.anchor ? 1 : 0) === 1; }, 15000);
+  const tw1 = await a.evaluate(() => window.YCApp.G.team.time(performance.now()));
+  check('둘이 함께 새로 고침해도 처음으로 돌아가지 않고 이어짐', both && tw1 > tw0 - 2500, '시간 ' + Math.round(tw0) + ' → ' + Math.round(tw1) + ' [' + await desc(a) + ' / ' + await desc(b) + ']');
 
   // 늦게 들어온 학생
   const c = await open('학생C'); await join(c, '다온', code);
@@ -73,9 +83,12 @@ function broker() {
 
   // 선생님 화면 새로 고침 → 열어 둔 방 다시 열기
   await host.reload(); await host.waitForSelector('#b-resume:not([hidden])'); await host.click('#b-resume');
-  const hs = await until(async () => host.evaluate(() => { const H = window.YCApp.H; const v = H.viewers[0]; return H.ph === 'play' && H.players.size === 3 && v && v.W && v.TS.stage === 1 ? { rows: document.querySelectorAll('#hp-rank .rk').length, views: document.querySelectorAll('#hp-views .view').length } : null; }), 10000);
+  const hs = await until(async () => host.evaluate(() => { const H = window.YCApp.H; const v = H.viewers[0], rows = document.querySelectorAll('#hp-rank .rk').length; return H.ph === 'play' && H.players.size === 3 && v && v.W && v.TS.stage === 1 && rows ? { rows: rows, views: document.querySelectorAll('#hp-views .view').length } : null; }), 10000);
   check('선생님이 새로 고침해도 방이 그대로 이어짐', hs && hs.rows === 1 && hs.views === 1, JSON.stringify(hs));
-  check('그동안 학생 게임은 멈추지 않음', (await st(a)).ph === 2 && (await st(b)).ph === 2 && (await st(c)).ph === 2);
+  const going = await until(async () => { const x = await st(a), y = await st(b), z = await st(c); return x.ph === 2 && y.ph === 2 && z.ph === 2 && x.stage === 1 && y.stage === 1 && z.stage === 1; }, 6000);
+  const ta = await a.evaluate(() => window.YCApp.G.team.time(performance.now())); await sleep(1500);
+  const tb2 = await a.evaluate(() => window.YCApp.G.team.time(performance.now()));
+  check('그동안 학생 게임은 멈추지 않음 (같은 스테이지에서 시간이 계속 감)', going && tb2 > ta + 1000, (ta / 1000).toFixed(1) + '초 → ' + (tb2 / 1000).toFixed(1) + '초');
 
   // 끝내기 → 결과
   await host.click('#hp-end');
