@@ -1,7 +1,7 @@
 /* 영차영차 — levels.js : 스테이지
    한 칸 = 32픽셀. 캐릭터는 24×28, 혼자 뛰면 2칸(64)까지, 친구 머리를 밟으면 3칸(96)까지 오른다.
    글자: # 땅, I 얼음, S 모래, ^ 가시, s 혼자 연습할 때만 생기는 디딤돌, d 팀이 둘 이하일 때만 생기는 디딤돌
-   M: { hard } — 하드 모드면 같은 스테이지라도 더 많은 사람이 더 정확하게 맞춰야 한다                  */
+   M: { hard } — 하드는 같은 스테이지에 장치(기믹)가 더 붙는다. 통신이 늦어도 할 수 있게, 시간을 더 짧게 조이지는 않는다  */
 (function (root) {
 'use strict';
 const YC = (typeof module !== 'undefined' && module.exports) ? require('./core.js') : root.YC;
@@ -52,10 +52,10 @@ S.push = (R, M) => {
   L.add({ type: 'flag', x: X(54), y: X(9), idx: 3 });
   // 상자 둘, 단추 둘: 팀이 둘로 나뉘어 각자 상자를 단추 위로 민다. 둘 다 눌려야 문이 열린다
   L.add({ type: 'box', x: X(59), y: X(11), w: 64, h: 64, need: 'rest', mat: 'wood' });
-  const bq = L.add({ type: 'btn', x: X(62), y: X(GY), w: 128, need: 1, boxOnly: true, latchT: H ? 2.5 : 1 });
+  const bq = L.add({ type: 'btn', x: X(62), y: X(GY), w: 128, need: 1, boxOnly: true, latchT: 1 });
   L.fill(66, 11, 66, 11);                         // 상자만 걸리는 턱 (사람은 아래로 지나가고, 상자 위에서는 걸어 넘는다)
   L.add({ type: 'box', x: X(68), y: X(11), w: 64, h: 64, need: 'half', mat: 'wood' });
-  const bp = L.add({ type: 'btn', x: X(71), y: X(GY), w: 128, need: 1, boxOnly: true, latchT: H ? 2.5 : 1 });
+  const bp = L.add({ type: 'btn', x: X(71), y: X(GY), w: 128, need: 1, boxOnly: true, latchT: 1 });
   L.fill(75, 11, 75, 11);
   L.fill(78, 0, 79, 10);
   L.add({ type: 'door', x: X(78) + 8, y: X(11), w: 48, h: 64, link: [bq, bp], mode: 'all' });
@@ -80,9 +80,10 @@ S.ice = (R, M) => {
   L.add({ type: 'sign', x: X(13), y: X(GY), icon: 'push', need: 'all' });
   L.add({ type: 'box', x: X(10), y: X(11), w: 64, h: 64, need: 'most', needS: 'all', mat: 'wood' });
   L.add({ type: 'flag', x: X(21), y: X(9), idx: 1 });
-  L.add({ type: 'sign', x: X(28), y: X(9), icon: 'ice' });
+  if (H) { L.fill(28, 9, 30, 9, 'S'); L.fill(40, 9, 40, 9, 'I'); L.add({ type: 'sign', x: X(29), y: X(9), icon: 'push', need: 'all' }); L.add({ type: 'sign', x: X(37), y: X(9), icon: 'ice' }); }   // 하드: 받침판 바로 앞에 모래 — 쇠 상자가 여기서 멈추면 다 같이 밀어야 하고, 지나친 상자를 되밀면 모래 끝(받침판 위)에서 선다
+  else L.add({ type: 'sign', x: X(28), y: X(9), icon: 'ice' });
   L.add({ type: 'box', x: X(25), y: X(7), w: 64, h: 64, need: 'most', mat: 'iron', wt: 2 });
-  const b = L.add({ type: 'btn', x: X(31), y: X(9), w: 128, need: 'w2', boxOnly: true, latchT: H ? 3 : 1.5 });   // 쇠 상자를 세워 두는 자리
+  const b = L.add({ type: 'btn', x: X(31), y: X(9), w: 128, need: 'w2', boxOnly: true, latchT: 1.5 });   // 쇠 상자를 세워 두는 자리
   L.fill(22, 7, 22, 7); L.fill(41, 7, 41, 7);     // 쇠 상자가 벼랑이나 문까지 못 가게 막는 턱 (사람은 아래로 지나간다)
   L.fill(43, 0, 44, 6);
   L.add({ type: 'door', x: X(43) + 8, y: X(7), w: 48, h: 64, link: [b] });
@@ -113,13 +114,17 @@ S.saw = (R, M) => {
   L.add({ type: 'saw', px: 560, py: 421, L: 136, max: 0.349, hi: 0, rest: 0, base: 560, solo: 1, launchV: 0, vref: 500 });   // 오른쪽 끝은 받침에 걸려 수평보다 내려가지 않는다
   L.fill(22, 10, 23, 10);
   L.fill(21, 12, 21, 12, 's');
-  const b1 = L.add({ type: 'btn', x: X(22) + 6, y: X(10), w: 52, need: 1 });
+  const b1 = L.add({ type: 'btn', x: X(22) + 6, y: X(10), w: 52, need: 1, latchN: H ? 2 : undefined });
   L.add({ type: 'door', x: X(22), y: X(11), w: 48, h: 64, link: [b1] });           // 문 앞에 설 자리를 두지 않는다
+  if (H) {                                                                         // 하드: 이 단추가 열쇠 선반 앞 유리문도 연다 → 한 명은 턱 위에 남아 계속 밟고, 나머지가 발사를 한다 (둘 이하면 한 번 밟으면 고정)
+    L.add({ type: 'door', x: X(41) + 8, y: X(2), w: 16, h: X(4), link: [b1], style: 'glass' });
+    L.add({ type: 'wire', pts: [[X(23), X(10)], [X(23), X(1) + 16], [X(41) + 16, X(1) + 16], [X(41) + 16, X(2)]], link: [b1] });
+  }
   L.add({ type: 'flag', x: X(24) + 8, y: X(GY), idx: 1 });
   // 탑에서 뛰어내려 반대쪽 친구를 선반까지 쏘아 올린다
   L.fill(27, 11, 27, 12); L.fill(28, 9, 28, 12); L.fill(29, 7, 31, 12);
   L.add({ type: 'sign', x: X(29) + 16, y: X(7), icon: 'drop' });
-  L.add({ type: 'saw', px: 1160, py: 370, L: 120, max: 0.3936, rest: 0.3936, base: 416, launchV: 1100, vref: 480, nmax: H ? 4 : 3 });   // nmax: 동시에 뛰어내려야 하는 최대 인원 (하드는 날아갈 사람 빼고 모두)
+  L.add({ type: 'saw', px: 1160, py: 370, L: 120, max: 0.3936, rest: 0.3936, base: 416, launchV: 1100, vref: 480, nsub: H ? 1 : undefined });   // nsub: 유리문 단추를 지키는 사람만큼 뛰어내릴 사람 수가 준다
   if (H) L.fill(42, 6, 43, 6); else L.fill(41, 6, 44, 6);                                // 하드: 선반이 좁다
   L.add({ type: 'key', x: X(42) + 16, y: X(6) - 34 });
   L.fill(48, 11, 48, 11, 's'); L.fill(47, 9, 47, 9, 's'); L.fill(46, 7, 46, 7, 's');   // 혼자 연습용 디딤돌 (아래로는 지나다닌다)
@@ -129,15 +134,21 @@ S.saw = (R, M) => {
 
 /* 4. 딱 맞게 — 용수철: 저울은 딱 맞는 인원만, 발사대는 다 같이 눌렀다가 한 번에 */
 S.spring = (R, M) => {
-  const L = new LB(50, 17), H = M.hard, st = H ? 1.2 : 0.25;                  // st: 저울이 딱 맞은 채로 버텨야 하는 시간
+  const L = new LB(50, 17), H = M.hard;
   L.fill(0, GY, 49, 16);
   L.spawn = { x: X(1), y: X(GY) };
-  const p1 = L.add({ type: 'pad', x: X(8), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: 'half', stabT: st });
+  const p1 = L.add({ type: 'pad', x: X(8), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: 'half' });
   L.fill(14, 0, 15, 10);
-  const p2 = L.add({ type: 'pad', x: X(20), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: 'rest', stabT: st });
+  const p2 = L.add({ type: 'pad', x: X(20), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: 'rest' });
   L.add({ type: 'door', x: X(14) + 8, y: X(11), w: 48, h: 64, link: [p1, p2] });
   L.add({ type: 'flag', x: X(24), y: X(GY), idx: 1 });
-  L.add({ type: 'pad', x: X(28), y: 376, w: 160, fy: X(GY), maxc: 36, mode: 'launch', launchV: 960, syncW: H ? 260 : 380 });   // syncW: 이만큼(ms) 안에 함께 뛰어야 '동시'
+  L.add({ type: 'pad', x: X(28), y: 376, w: 160, fy: X(GY), maxc: 36, mode: 'launch', launchV: 960 });
+  if (H) {                                                                         // 하드: 두 번 쏜다 — 먼저 왼쪽 높은 선반의 단추를 밟아 열쇠 앞 유리문을 열고, 그다음 열쇠로
+    L.fill(22, 6, 25, 6);
+    const bB = L.add({ type: 'btn', x: X(23), y: X(6), w: 64, need: 1, latch: true, minN: 2, style: 'sw' });
+    L.add({ type: 'door', x: X(33) + 8, y: X(2), w: 16, h: X(4), link: [bB], style: 'glass' });
+    L.add({ type: 'wire', pts: [[X(24), X(6)], [X(24), X(1) + 16], [X(33) + 16, X(1) + 16], [X(33) + 16, X(2)]], link: [bB] });
+  }
   L.fill(34, 6, 36, 6);
   L.add({ type: 'key', x: X(35) + 4, y: X(6) - 34 });
   L.fill(40, 11, 40, 11, 's'); L.fill(39, 9, 39, 9, 's'); L.fill(38, 7, 38, 7, 's');
@@ -148,15 +159,22 @@ S.spring = (R, M) => {
 /* 5. 둥둥 — 부력: 가벼우면 높이 떠서 벽에 걸리고, 너무 무거우면 가라앉는다 */
 S.raft = (R, M) => {
   const L = new LB(44, 17), H = M.hard;
-  L.fill(0, GY, 9, 16);
+  L.fill(0, H ? 12 : GY, 9, 16);                  // 하드: 이쪽 둑이 한 칸 높다 (쇠 추를 뗏목으로 밀어 떨어뜨릴 수 있게)
   L.fill(10, 16, 27, 16);
   L.fill(28, GY, 43, 16);
   L.fill(18, 0, 19, 11);                          // 물 위로 내려온 벽
-  L.spawn = { x: X(1), y: X(GY) };
-  L.fill(7, 11, 7, 12);
-  L.add({ type: 'key', x: X(7) + 4, y: X(11) - 34 });
+  L.spawn = { x: X(H ? 3 : 1), y: X(H ? 12 : GY) };
+  if (H) {
+    L.fill(7, 10, 7, 10);                         // 떠 있는 턱: 사람과 쇠 추는 아래로 지나간다
+    L.add({ type: 'key', x: X(7) + 4, y: X(10) - 34 });
+    L.add({ type: 'box', x: X(1), y: X(12) - 28, w: 28, h: 28, need: 1, mat: 'iron', wt: 2 });   // 쇠 추: 사람 둘 무게 (다니는 길에 걸리지 않게 맨 왼쪽)
+    L.add({ type: 'sign', x: X(1) - 18, y: X(12) - 30, txt: '쇠 추 = 2명', size: 12, w: 84 });
+  } else {
+    L.fill(7, 11, 7, 12);
+    L.add({ type: 'key', x: X(7) + 4, y: X(11) - 34 });
+  }
   L.add({ type: 'water', x: X(10), y: 423, w: X(18), h: 121 });
-  L.add({ type: 'raft', x: X(10) + 12, w: 96, x2: X(28) - 108, wy: 423, rise: 22, per: 8, cap: 3, speed: 90, go: H ? 0.45 : 1 });   // go: 마지막 사람이 탄 뒤 출발까지(초). 하드는 거의 동시에 타야 한다   // 빈 뗏목 401, 1명 409(벽에 걸림), 2명 417, 3명 425
+  L.add({ type: 'raft', x: X(10) + 12, w: 96, x2: X(28) - 108, wy: 423, rise: H ? 30 : 22, per: 8, cap: 3, speed: 90, soloPer: H ? 3 : undefined });   // 노말: 빈 뗏목 401, 1명 409(벽에 걸림), 2명 417, 3명 425 / 하드: 393, 401, 409(둘도 벽에 걸림), 417 — 무게 3(사람 셋, 또는 한 명 + 쇠 추)이어야 지나간다
   L.add({ type: 'exit', x: X(36), y: X(GY) - 60, w: 44, h: 60, locked: true });   // 건너편에는 깃발을 두지 않는다: 물에 빠지면 처음 나루로
   return L.done({ id: 'raft', name: '둥둥', sub: '뗏목에 몇 명이 타야 할까', sci: '부력' });
 };
@@ -171,29 +189,32 @@ S.circuit = (R, M) => {
   const a1 = L.add({ type: 'btn', x: X(8), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true, tag: 'pA' });
   L.fill(12, 0, 13, 10);
   const a2 = L.add({ type: 'btn', x: X(15), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'pB' });
-  const d1 = L.add({ type: 'door', x: X(12) + 8, y: X(11), w: 48, h: 64, link: [a1, a2], rate: H ? 5 : undefined });
+  const d1 = L.add({ type: 'door', x: X(12) + 8, y: X(11), w: 48, h: 64, link: [a1, a2] });
   L.add({ type: 'wire', pts: [[X(9), X(GY)], [X(9), X(9)], [X(12), X(9)]], link: [a1] });
   L.add({ type: 'wire', pts: [[X(16), X(GY)], [X(16), X(9)], [X(14), X(9)]], link: [a2] });
   L.add({ type: 'cell', x: X(12), y: X(8) });
   L.add({ type: 'flag', x: X(19), y: X(GY), idx: 1 });
   // 직렬 회로: 스위치를 모두 함께 눌러야 전구가 켜지고, 잠깐 켜져 있으면 문이 딸깍 열린 채로 남는다 (인원이 적으면 스위치가 줄어든다)
   L.add({ type: 'sign', x: X(21), y: X(GY), txt: '직렬', size: 15 });
-  let sx;
-  if (H) { const out = R.i(0, 6, 6); sx = [22, 24, 26, 28, 30, 32, 34].filter((c, k) => k !== out); }   // 하드: 스위치 여섯 (여섯 명이면 모두)
+  let sx, shx = -1;
+  if (H) { const all7 = [22, 24, 26, 28, 30, 32, 34], out = R.i(0, 6, 6); sx = all7.filter((c, k) => k !== out); shx = all7[out]; }   // 하드: 스위치 여섯 + 합선 스위치 하나
   else { sx = R.slots([22, 23, 25, 26, 28, 29, 31, 32, 33], 4, [23, 26, 29, 32]).reduce((a, c) => { if (!a.length || c - a[a.length - 1] >= 2) a.push(c); return a; }, []); while (sx.length < 4) sx.push(sx[sx.length - 1] + 2); }
   const ss = [], ord = R.perm(sx.map((c, k) => k + 1));                                    // 몇 번째 스위치가 '인원이 많을 때만' 생기는지도 판마다 다르다
   sx.forEach((c, k) => ss.push(L.add({ type: 'btn', x: X(c), y: X(GY), w: 48, need: 1, style: 'sw', minN: H ? ord[k] : k + 1, tag: 'ser' })));
-  const rl = L.add({ type: 'relay', link: ss, mode: 'all', latchT: H ? 4 : 2.5 });
+  // 합선 스위치: 전구를 건너뛰는 길이라 이것을 누르면 전류가 전구로 가지 않는다 (밟지 말아야 한다)
+  const sc = H ? L.add({ type: 'btn', x: X(shx), y: X(GY), w: 48, need: 1, style: 'sw', tag: 'short' }) : null, nl = sc ? [sc] : undefined;
+  const rl = L.add({ type: 'relay', link: ss, mode: 'all', latchT: 2.5, nlink: nl });
   L.fill(36, 0, 37, 10);
   L.add({ type: 'door', x: X(36) + 8, y: X(11), w: 48, h: 64, link: [rl] });
-  L.add({ type: 'wire', pts: [[X(23) + 24, X(10)], [X(36), X(10)]], link: ss, mode: 'all' });
-  L.add({ type: 'bulb', x: X(30), y: X(8), link: ss, mode: 'all' });
+  L.add({ type: 'wire', pts: [[X(23) + 24, X(10)], [X(36), X(10)]], link: ss, mode: 'all', nlink: nl });
+  L.add({ type: 'bulb', x: X(30), y: X(8), link: ss, mode: 'all', nlink: nl });
+  if (sc) L.add({ type: 'wire', pts: [[X(shx) + 24, X(GY)], [X(shx) + 24, X(9) + 8], [X(30) + 16, X(9) + 8]], link: [sc] });
   L.add({ type: 'flag', x: X(40), y: X(GY), idx: 2 });
   // 병렬 다리: 낭떠러지 위 빛다리. 앞뒤 스위치 가운데 하나만 눌려도 놓인다
   const b1 = L.add({ type: 'btn', x: X(43), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true, tag: 'bA' });
   L.fill(46, GY, 54, 16, ' ');
   const b2 = L.add({ type: 'btn', x: X(56), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'bB' });
-  L.add({ type: 'door', x: X(46), y: X(GY), w: X(9), h: 14, link: [b1, b2], inv: true, rate: H ? 6 : 3, style: 'bridge' });   // 하드: 손을 떼면 빛다리가 금방 사라진다
+  L.add({ type: 'door', x: X(46), y: X(GY), w: X(9), h: 14, link: [b1, b2], inv: true, rate: 3, style: 'bridge' });
   L.add({ type: 'wire', pts: [[X(44), X(GY)], [X(44), X(11)], [X(58) - 12, X(11)], [X(58) - 12, X(GY)]], link: [b1, b2] });
   L.add({ type: 'flag', x: X(59), y: X(GY), idx: 3 });
   L.add({ type: 'exit', x: X(63), y: X(GY) - 60, w: 44, h: 60 });
@@ -205,12 +226,12 @@ S.fire = (R, M) => {
   const L = new LB(60, 17), H = M.hard;
   L.fill(0, GY, 59, 16);
   L.spawn = { x: X(1), y: X(GY) };
-  // 산소 막기: 공기 구멍을 모두 함께 막고 있으면 불이 꺼진다 (하드: 구멍 넷, 불이 천천히 줄어든다 — 그동안 계속 막고 있어야 한다)
+  // 산소 막기: 공기 구멍을 모두 함께 막고 있으면 불이 꺼진다 (하드: 구멍 넷)
   L.add({ type: 'sign', x: X(1), y: X(10), txt: '산소 차단', size: 13, w: 84 });
   const vx = H ? R.slots([3, 6, 9, 12, 15], 4, [3, 6, 9, 12]) : R.slots([3, 6, 9, 12], 3, [8, 12, 4]), vs = [];
   vx.forEach((c, k) => vs.push(L.add({ type: 'btn', x: X(c), y: X(GY), w: 64, need: 1, style: 'vent', soloLatch: k === 0, minN: k ? k + 1 : undefined, tag: 'vent' })));
   L.fill(17, 0, 19, 8);
-  L.add({ type: 'fire', x: X(17), y: X(9), w: 96, h: 128, link: vs, mode: 'all', stay: true, rate: H ? 0.45 : undefined });
+  L.add({ type: 'fire', x: X(17), y: X(9), w: 96, h: 128, link: vs, mode: 'all', stay: true });
   L.add({ type: 'flag', x: X(21), y: X(GY), idx: 1 });
   // 탈 물질 치우기: 장작 상자 위에서 불이 탄다. 상자를 밀어 내면 꺼진다
   L.add({ type: 'sign', x: X(24), y: X(GY), txt: '탈 물질', size: 13, w: 76 });
@@ -239,7 +260,7 @@ S.balloon = (R, M) => {
   L.fill(17, 7, 30, 12);
   const h1 = L.add({ type: 'btn', x: X(R.i(6, 9, 8)), y: X(GY), w: 64, need: 1, style: 'heat' });          // 처음 서 있는 자리(1~5칸)와 겹치지 않게
   const h2 = L.add({ type: 'btn', x: X(19), y: X(7), w: 64, need: 1, style: 'heat' });
-  L.add({ type: 'lift', x: X(13) + 16, y: X(GY) - 16, w: 112, h: 16, x2: X(13) + 16, y2: X(7), speed: 60, down: H ? 2.2 : 1, cap: cap, link: [h1, h2], solo: true, style: 'balloon' });
+  L.add({ type: 'lift', x: X(13) + 16, y: X(GY) - 16, w: 112, h: 16, x2: X(13) + 16, y2: X(7), speed: 60, cap: cap, link: [h1, h2], solo: true, style: 'balloon' });
   if (H) L.add({ type: 'sign', x: X(10), y: X(GY), txt: '2명까지', size: 13, w: 70 });
   L.add({ type: 'flag', x: X(23), y: X(7), idx: 1 });
   // 낭떠러지를 건너는 열기구: 데우는 동안 비스듬히 떠올라 건너편 높은 땅에 닿는다
@@ -247,7 +268,7 @@ S.balloon = (R, M) => {
   L.fill(47, 5, 58, 16);
   const h3 = L.add({ type: 'btn', x: X(26), y: X(7), w: 64, need: 1, style: 'heat' });
   const h4 = L.add({ type: 'btn', x: X(R.i(49, 53, 50)), y: X(5), w: 64, need: 1, style: 'heat' });
-  L.add({ type: 'lift', x: X(29) + 8, y: X(7) - 16, w: 112, h: 16, x2: X(43) + 8, y2: X(5), speed: 70, down: H ? 2.2 : 1, cap: cap, link: [h3, h4], solo: true, style: 'balloon' });
+  L.add({ type: 'lift', x: X(29) + 8, y: X(7) - 16, w: 112, h: 16, x2: X(43) + 8, y2: X(5), speed: 70, cap: cap, link: [h3, h4], solo: true, style: 'balloon' });
   L.add({ type: 'flag', x: X(53), y: X(5), idx: 2 });
   L.add({ type: 'exit', x: X(65), y: X(GY) - 60, w: 44, h: 60 });
   return L.done({ id: 'balloon', name: '두둥실', sub: '데우면 떠오르는 열기구', sci: '기체의 온도와 부피' });
@@ -263,24 +284,28 @@ S.freeze = (R, M) => {
   L.add({ type: 'water', x: X(10), y: X(GY) + 7, w: X(10), h: 89 });
   const c1 = L.add({ type: 'btn', x: X(6), y: X(GY), w: 64, need: 1, style: 'cool', soloLatch: true, tag: 'cA' });
   const c2 = L.add({ type: 'btn', x: X(21), y: X(GY), w: 64, need: 1, style: 'cool', tag: 'cB' });
-  L.add({ type: 'door', x: X(10), y: X(GY), w: X(10), h: 14, link: [c1, c2], inv: true, rate: H ? 3.2 : 1.6, style: 'ice' });   // 하드: 두 배로 빨리 녹는다
+  L.add({ type: 'door', x: X(10), y: X(GY), w: X(10), h: 14, link: [c1, c2], inv: true, rate: 1.6, style: 'ice' });
   L.add({ type: 'flag', x: X(24), y: X(GY), idx: 1 });
   // 얼음벽: 가열판을 모두 함께 눌러야 녹는다 (인원이 적으면 가열판이 줄어든다)
-  let hx;
-  if (H) { const out = R.i(0, 6, 6); hx = [26, 28, 30, 32, 34, 36, 38].filter((c, k) => k !== out); }   // 하드: 가열판 여섯
+  let hx, dcx = -1;
+  if (H) { const all7 = [26, 28, 30, 32, 34, 36, 38], out = R.i(0, 6, 6); hx = all7.filter((c, k) => k !== out); dcx = all7[out]; }   // 하드: 가열판 여섯 + 사이에 냉각판 하나
   else hx = R.slots([26, 28, 30, 32, 34, 36], 4, [27, 30, 33, 36]);
   const hs = [], ord = R.perm(hx.map((c, k) => k + 1));
   hx.forEach((c, k) => hs.push(L.add({ type: 'btn', x: X(c), y: X(GY), w: 48, need: 1, style: 'heat', minN: H ? ord[k] : k + 1, tag: 'ser' })));
-  const rl = L.add({ type: 'relay', link: hs, mode: 'all', latchT: H ? 4.5 : 3 });
+  const dc = H ? L.add({ type: 'btn', x: X(dcx), y: X(GY), w: 48, need: 1, style: 'cool', tag: 'dec' }) : null;   // 밟으면 식혀 버려서 얼음벽이 안 녹는다
+  const rl = L.add({ type: 'relay', link: hs, mode: 'all', latchT: 3, nlink: dc ? [dc] : undefined });
   L.fill(40, 0, 41, 6);
-  L.add({ type: 'door', x: X(40), y: X(7), w: 64, h: X(6), link: [rl], rate: H ? 0.6 : 0.8, style: 'icewall' });
+  L.add({ type: 'door', x: X(40), y: X(7), w: 64, h: X(6), link: [rl], rate: 0.8, style: 'icewall' });
   L.add({ type: 'flag', x: X(44), y: X(GY), idx: 2 });
   // 더 넓은 물: 이번 얼음은 빨리 녹는다
   L.fill(50, GY, 61, 15, ' ');
   L.add({ type: 'water', x: X(50), y: X(GY) + 7, w: X(12), h: 89 });
   const c3 = L.add({ type: 'btn', x: X(46), y: X(GY), w: 64, need: 1, style: 'cool', soloLatch: true, tag: 'cC' });
   const c4 = L.add({ type: 'btn', x: X(63), y: X(GY), w: 64, need: 1, style: 'cool', tag: 'cD' });
-  L.add({ type: 'door', x: X(50), y: X(GY), w: X(12), h: 14, link: [c3, c4], inv: true, rate: H ? 5.5 : 3, style: 'ice' });
+  // 하드: 넓은 물은 이쪽 냉각판 두 개를 함께 눌러야 언다 (셋 이상일 때. 건너편 냉각판은 하나로 된다)
+  const c5 = H ? L.add({ type: 'btn', x: X(48), y: X(GY), w: 64, need: 1, style: 'cool', minN: 3, tag: 'cE' }) : null;
+  const rN = H ? L.add({ type: 'relay', link: [c3, c5], mode: 'all', mom: true }) : null;
+  L.add({ type: 'door', x: X(50), y: X(GY), w: X(12), h: 14, link: H ? [rN, c4] : [c3, c4], inv: true, rate: 3, style: 'ice' });
   L.add({ type: 'exit', x: X(66), y: X(GY) - 60, w: 44, h: 60 });
   return L.done({ id: 'freeze', name: '꽁꽁 사르르', sub: '얼리면 다리, 데우면 녹는 벽', sci: '상태 변화' });
 };
@@ -295,7 +320,7 @@ S.light = (R, M) => {
   L.fill(1, 7, 3, 7);
   const p1 = L.add({ type: 'btn', x: X(8), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true });
   L.add({ type: 'mirror', x: X(13), y: X(6), d: 0, ok: 1, link: [p1] });
-  const z1 = L.add({ type: 'sensor', x: X(13), y: X(11), latchT: H ? 2.5 : 1.5 });
+  const z1 = L.add({ type: 'sensor', x: X(13), y: X(11), latchT: 1.5 });
   L.fill(16, 0, 17, 10);
   L.add({ type: 'door', x: X(16) + 8, y: X(11), w: 48, h: 64, link: [z1] });
   L.add({ type: 'flag', x: X(19), y: X(GY), idx: 1 });
@@ -312,7 +337,7 @@ S.light = (R, M) => {
   L.add({ type: 'mirror', x: X(35), y: X(7), d: 0, link: [p4], opt: true });
   if (H) L.add({ type: 'mirror', x: X(35), y: X(8), d: 1, link: [p6], opt: true });
   L.add({ type: 'mirror', x: X(35), y: X(10), d: d3, ok: 1, link: [p3], soloOk: true });
-  const z2 = L.add({ type: 'sensor', x: X(39), y: X(10), latchT: H ? 3 : 2 });
+  const z2 = L.add({ type: 'sensor', x: X(39), y: X(10), latchT: 2 });
   L.fill(41, 0, 42, 10);
   L.add({ type: 'door', x: X(41) + 8, y: X(11), w: 48, h: 64, link: [z2] });
   L.add({ type: 'flag', x: X(44), y: X(GY), idx: 2 });
@@ -322,7 +347,7 @@ S.light = (R, M) => {
   const lr = shelf(L, 49, 51, H);
   const p5 = L.add({ type: 'btn', x: X(49) + 16, y: X(lr), w: 64, need: 1, style: 'sw' });
   L.add({ type: 'mirror', x: X(54), y: X(3), d: 0, link: [p5] });
-  const z3 = L.add({ type: 'sensor', x: X(54), y: X(9), latchT: H ? 3 : 2 });
+  const z3 = L.add({ type: 'sensor', x: X(54), y: X(9), latchT: 2 });
   L.fill(56, 0, 57, 10);
   L.add({ type: 'door', x: X(56) + 8, y: X(11), w: 48, h: 64, link: [z3] });
   L.add({ type: 'exit', x: X(60), y: X(GY) - 60, w: 44, h: 60 });

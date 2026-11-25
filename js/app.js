@@ -83,6 +83,8 @@ function tick(now) {
   T.me.vote = now < G.voteUntil ? 1 : 0;
   if (!G.solo && now - G.rttT > 1000) {                                                     // 통신 길에 맞춰 보내는 빠르기를 정한다
     G.rttT = now; const st = Net.status(), dir = st.want > 0 && st.direct >= st.want;
+    let gd = 0, gn = 0; for (const s in T.ghosts) { const g = T.ghosts[s]; if (g && g.present && g.st.buf.length) { gd += g.st.delay; gn++; } }
+    G.lag = gn ? Math.round((dir ? (st.drtt || 0) / 2 : (st.rtt || 0)) + gd / gn) : 0;      // 친구 모습이 내 화면에 늦게 보이는 정도: 가는 데 걸린 시간 + 부드럽게 잇는 몫
     G.rtt = st.rtt || 0; T.selfDelay = dir ? 20 : Math.min(400, G.rtt); T.pIvl = dir ? 33 : 66; T.wIvl = dir ? 50 : 83; T.vIvl = 250;   // 직접 연결이면 초당 30번
   }
   T.tick(inp, 1 / 60, now);
@@ -158,7 +160,7 @@ function hud(now) {
   // 순위
   if (G.rank && !G.solo) { const i = G.rank.findIndex(r => r[0] === G.myTeam); const p = $('h-rank'); if (i >= 0 && G.rank.length > 1) { p.hidden = false; p.textContent = (i + 1) + '위 / ' + G.rank.length + '팀'; } else p.hidden = true; }
   // 연결
-  if (!G.solo) { const st = Net.status(), nd = $('h-net'); nd.classList.toggle('bad', !st.up); nd.textContent = !st.up ? '연결이 끊겼어요. 다시 연결하는 중…' : (T.anchor ? '● ' : '') + (st.want && st.direct >= st.want ? '친구들과 직접 연결' : (st.direct ? '직접 ' + st.direct + '/' + st.want + ' · ' : '') + '중계 ' + (st.rtt ? st.rtt + 'ms' : '연결됨')); } else $('h-net').textContent = '';
+  if (!G.solo) { const st = Net.status(), nd = $('h-net'); nd.classList.toggle('bad', !st.up); nd.textContent = !st.up ? '연결이 끊겼어요. 다시 연결하는 중…' : (T.anchor ? '● ' : '') + (st.want && st.direct >= st.want ? '친구들과 직접 연결' + (G.lag ? ' · 지연 약 ' + G.lag + 'ms' : '') : (st.direct ? '직접 ' + st.direct + '/' + st.want + ' · ' : '') + '중계 ' + (G.lag ? '· 지연 약 ' + G.lag + 'ms' : st.rtt ? st.rtt + 'ms' : '연결됨')); } else $('h-net').textContent = '';
   // 가운데 안내
   let okey = '', html = null;
   if (TS.ph === YC.PH_WAIT) { okey = 'w'; html = '<div class="t2">곧 시작해요…</div>'; }
@@ -235,7 +237,7 @@ function joinRoom(name, code) {
   clearInterval(S.hello); S.hello = setInterval(studentBeat, 2000);
   show('s-wait'); updateWait();
 }
-function sayHi() { if (!S.on) return; S.hiAt = Date.now(); Net.say('c', { t: 'hi', n: S.name, br: Net.status().br, v: YC.VERSION }); }
+function sayHi() { if (!S.on) return; S.hiAt = Date.now(); Net.say('c', { t: 'hi', n: S.name, br: Net.status().br, v: YC.VERSION, lg: G.on && !G.solo ? G.lag | 0 : 0 }); }
 function studentBeat() {
   sayHi(); if (S.on && !G.on) updateWait();
   // 대기실에서 팀이 정해지고 잠잠해지면 팀원끼리 미리 직접 연결해 둔다
@@ -361,7 +363,7 @@ function hostMsg(ch, d, from) {
     A.play('join'); H.dirty = true;
   }
   const name = String(d.n || '?').slice(0, 8); if (name !== p.name) { p.name = name; H.dirty = true; }
-  p.last = now; p.br = d.br || null;
+  p.last = now; p.br = d.br || null; p.lag = d.lg | 0;
 }
 function teamCount() { const n = H.players.size; return Math.max(1, Math.ceil(n / 6), H.nTeams || Math.ceil(n / 4)); }
 function assignAll() { const T = teamCount(), cnt = []; [...H.players.values()].sort((a, b) => a.order - b.order).forEach((p, i) => { p.team = i % T; p.slot = cnt[p.team] = (cnt[p.team] === undefined ? 0 : cnt[p.team] + 1); }); H.dirty = true; }
@@ -412,7 +414,7 @@ function hostLobby() {
   YC.order.forEach((id, i) => { const b = el('button', 'chk' + (H.stages.indexOf(id) >= 0 ? ' on' : ''), (i + 1) + ' ' + YC.build(id).name); b.onclick = () => { const at = H.stages.indexOf(id); if (at >= 0) { if (H.stages.length > 1) H.stages.splice(at, 1); } else H.stages = YC.order.filter(x => x === id || H.stages.indexOf(x) >= 0); H.dirty = true; hostBeat(); }; cs.append(b); });
   const dfb = $('hc-diff'); dfb.textContent = '';
   YC.DIFF.forEach((nm, k) => { const b = el('button', 'chk' + (H.df === k ? ' on' : '') + (k ? ' hd' : ''), nm); b.onclick = () => { if (H.df === k) return; H.df = k; store.set('yc-hdiff', String(k)); A.play('ui'); H.dirty = true; hostBeat(); }; dfb.append(b); });
-  $('hc-dnote').textContent = H.df ? '하드: 더 많은 사람이 더 정확하게 맞춰야 해요 (셋이 탑 쌓기, 스위치 더 많이, 더 오래 버티기)' : '노말: 처음 하는 반에 알맞아요';
+  $('hc-dnote').textContent = H.df ? '하드: 스테이지마다 장치가 더 붙어요 (셋이 탑 쌓기, 쇠 추, 합선 스위치, 두 번 발사…). 맞춰 뛰는 시간은 노말과 같아요' : '노말: 처음 하는 반에 알맞아요';
   const box = $('hc-teams'); box.textContent = '';
   const now = performance.now();
   for (let k = 0; k < Math.max(T, 1); k++) {
@@ -446,7 +448,7 @@ function hostPlayUi() {
     const sk = el('button', 'btn slim skip', '넘기기'); sk.onclick = () => { const vw = H.viewers[k]; if (!vw) return; if (!confirm(teamName(+k) + '을 다음 스테이지로 넘길까요? (벌칙 1분 30초)')) return; H.skip[k] = vw.TS.stage; H.dirty = true; hostBeat(); };
     cap.append(nm, tm); v.append(c, cap, wait, sk); box.append(v);
     const names = {}; teams[k].forEach(p => { names[p.slot] = p.name; });
-    H.vr[k] = { R: new RD(c), cv: c, tm: tm, wait: wait, box: v, names: names, sk: sk };
+    H.vr[k] = { R: new RD(c), cv: c, tm: tm, wait: wait, box: v, names: names, sk: sk, ids: teams[k].map(p => p.id) };
   });
 }
 function hostFrame() {
@@ -465,7 +467,8 @@ function hostFrame() {
       r.R.fit(w, h, 1);
       r.R.draw({ W: v.W, people: v.pl, me: -1, names: r.names, ck: v.TS.ck, t: now / 1000, focus: null, plain: true });
       const done = v.TS.ph === YC.PH_DONE; r.box.classList.toggle('done', done); r.sk.hidden = done;
-      r.tm.textContent = done ? '완주 ' + fmt(v.total(now)) : (v.TS.stage + 1) + '/' + H.stages.length + ' ' + v.W.def.name + ' · ' + fmt(v.time(now));
+      let lg = 0; for (const id of r.ids) { const p = H.players.get(id); if (p && p.lag > lg) lg = p.lag; }   // 이 팀에서 가장 늦게 보이는 학생의 지연
+      r.tm.textContent = done ? '완주 ' + fmt(v.total(now)) : (v.TS.stage + 1) + '/' + H.stages.length + ' ' + v.W.def.name + ' · ' + fmt(v.time(now)) + (lg ? ' · 지연 ' + lg + 'ms' : '');
     });
     if (now - H.lastUi > 500) {
       H.lastUi = now; const rk = rankNow(); $('hp-rank').innerHTML = rankHtml(rk, -1, H.stages.length); $('hp-net').textContent = hostNetText();

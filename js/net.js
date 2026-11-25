@@ -156,8 +156,10 @@ Net.status = function () {
   let up = 0, data = 0; const br = {};
   for (const l of Net.links) if (l.ready) { up++; if (!l.sig) data++; br[l.name] = Math.round(l.rtt) || 0; }
   const l = Net.dataLink();
-  let direct = 0; const now = performance.now(); for (const id of Net.want) { const p = Net.peers[id]; if (p && p.ok(now)) direct++; }
-  return { up: up, total: Net.links.length, data: data, rtt: l ? Math.round(l.rtt) : 0, via: l ? l.name : '', sigOnly: !!(l && l.sig), br: br, slow: !up && Date.now() - Net.opened > 9000, direct: direct, want: Net.want.length };
+  let direct = 0, drtt = 0; const now = performance.now();
+  if (now - (Net.statAt || 0) > 2000) { Net.statAt = now; for (const id of Net.want) { const p = Net.peers[id]; if (p && p.ok(now)) p.stat(); } }
+  for (const id of Net.want) { const p = Net.peers[id]; if (p && p.ok(now)) { direct++; if (p.rtt > drtt) drtt = p.rtt; } }
+  return { up: up, total: Net.links.length, data: data, rtt: l ? Math.round(l.rtt) : 0, via: l ? l.name : '', sigOnly: !!(l && l.sig), br: br, slow: !up && Date.now() - Net.opened > 9000, direct: direct, want: Net.want.length, drtt: Math.round(drtt) };
 };
 /* 선생님 기기: 모두에게 가장 무난한 서버를 고른다. list: [{이름: 왕복ms}, ...] (학생들이 알려 온 값) */
 Net.pickDb = function (list, cur) {
@@ -183,6 +185,14 @@ const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:
 Net.peers = {}; Net.want = []; Net.offers = {}; Net.hb = 0;
 function Peer(id) { this.id = id; this.pc = null; this.dc = null; this.n = 0; this.tries = 0; this.lastIn = 0; this.openAt = 0; this.timer = 0; this.dead = false; this.init = Net.id < id; if (this.init) this.offer(); }
 Peer.prototype.ok = function (now) { return !!this.dc && this.dc.readyState === 'open' && this.openAt > 0 && (now - this.lastIn < 1500 || now - this.openAt < 1500); };
+Peer.prototype.stat = function () {                     // 직접 연결의 왕복 시간 (브라우저가 재어 둔 값)
+  const self = this, pc = this.pc; if (!pc || !pc.getStats || this.statBusy) return;
+  this.statBusy = true;
+  pc.getStats().then(function (rs) {
+    let v = 0; rs.forEach(function (r) { if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime > 0 && (r.nominated || r.selected)) v = Math.max(v, r.currentRoundTripTime * 1000); });
+    if (v > 0) self.rtt = self.rtt ? self.rtt * 0.5 + v * 0.5 : v;
+  }).catch(function () {}).then(function () { self.statBusy = false; });
+};
 Peer.prototype.send = function (s) { try { if (this.dc.bufferedAmount > 60000) return false; this.dc.send(s); return true; } catch (e) { return false; } };
 Peer.prototype.drop = function () {
   clearTimeout(this.timer); const pc = this.pc, dc = this.dc; this.pc = null; this.dc = null; this.openAt = 0;

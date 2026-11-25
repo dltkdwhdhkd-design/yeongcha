@@ -114,6 +114,12 @@ function drawDoor(c, o, t) {
     else { c.fillStyle = 'rgba(102,217,232,' + (0.35 + 0.5 * a) + ')'; c.fillRect(o.x, o.y, o.w, h); c.strokeStyle = 'rgba(21,170,191,' + a + ')'; c.lineWidth = 2; c.strokeRect(o.x, o.y, o.w, h); c.fillStyle = 'rgba(255,255,255,.8)'; for (let x = o.x + ((t * 60) % 24); x < o.x + o.w - 4; x += 24) c.fillRect(x, o.y + 5, 8, 3); }
     return;
   }
+  if (o.style === 'glass') {                                             // 유리문: 위로 걷히며 열린다
+    if (h < 1) return;
+    c.fillStyle = 'rgba(165,216,255,.5)'; c.fillRect(o.x, o.y, o.w, h); c.strokeStyle = '#4dabf7'; c.lineWidth = 2; c.strokeRect(o.x, o.y, o.w, h);
+    c.strokeStyle = 'rgba(255,255,255,.95)'; c.lineWidth = 2.5; c.beginPath(); for (let yy = o.y + 14; yy < o.y + h - 10; yy += 34) { c.moveTo(o.x + 4, yy + 10); c.lineTo(o.x + o.w - 4, yy); } c.stroke();
+    return;
+  }
   if (o.style === 'icewall') {
     if (h < 1) return;
     box(c, o.x, o.y + o.h - h, o.w, h, 6, '#d0ebff', '#74c0fc', 2.5);
