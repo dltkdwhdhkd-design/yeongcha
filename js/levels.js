@@ -7,6 +7,14 @@ const YC = (typeof module !== 'undefined' && module.exports) ? require('./core.j
 const T = YC.T, LB = YC.LB, S = YC.stages;
 const X = c => c * T;
 const GY = 13;                                   // 땅 윗면이 있는 줄
+/* 판마다 조금씩 다른 배치: seed가 0이면 늘 기본값(d), 아니면 씨앗으로 고른다 (같은 팀은 같은 씨앗) */
+function Rnd(seed) {
+  let s = seed >>> 0; const r = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+  return { on: !!seed, i: (a, b, d) => seed ? a + Math.floor(r() * (b - a + 1)) : d, b: d => seed ? r() < 0.5 : d,
+    pick: (arr, d) => seed ? arr[Math.floor(r() * arr.length)] : d,
+    perm: (arr) => { const a = arr.slice(); if (seed) for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; },
+    slots: (cands, k, d) => { if (!seed) return d; const a = cands.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a.slice(0, k).sort((x, y) => x - y); } };
+}
 
 /* 1. 영차! — 같은 방향으로 밀기 (알짜힘) */
 S.push = () => {
@@ -22,7 +30,7 @@ S.push = () => {
   L.add({ type: 'flag', x: X(17), y: X(GY), idx: 1 });
   // 굴 속의 무거운 상자: 가시 구덩이까지 밀어 넣으면 다리가 된다 (먼저 뛰어들면 가시에 찔린다)
   L.fill(21, 5, 30, 10);
-  L.add({ type: 'box', x: X(22), y: X(11), w: 64, h: 64, need: 'most', mat: 'wood' });
+  L.add({ type: 'box', x: X(22), y: X(11), w: 64, h: 64, need: 'all', mat: 'wood' });
   L.fill(31, 13, 32, 14, ' ');
   L.fill(31, 14, 32, 14, '^');
   L.fill(33, 12, 33, 12);
@@ -51,7 +59,7 @@ S.push = () => {
 };
 
 /* 2. 미끌미끌 — 마찰력: 모래 위에서는 다 같이, 얼음 위에서는 살살 */
-S.ice = () => {
+S.ice = (R) => {
   const L = new LB(102, 17);
   L.fill(0, GY, 19, 16);
   L.fill(9, GY, 19, GY, 'S');                     // 모래밭
@@ -71,7 +79,8 @@ S.ice = () => {
   // 얼음 위 가시 구덩이: 미끄러워서 멈추기 어렵다. 달려가며 뛰어 넘는다
   L.add({ type: 'flag', x: X(46), y: X(9), idx: 2 });
   L.fill(48, 9, 71, 9, 'I');
-  for (const g of [53, 59, 65]) { L.fill(g, 9, g + 1, 9, ' '); L.fill(g, 10, g + 1, 10, '^'); }
+  const gaps = R.on ? [R.i(51, 54), R.i(59, 61), R.i(66, 68)] : [53, 59, 65];
+  for (const g of gaps) { L.fill(g, 9, g + 1, 9, ' '); L.fill(g, 10, g + 1, 10, '^'); }
   // 얼음 위에서는 한 명만 밀어도 상자가 미끄러져 간다: 넓은 가시 구덩이에 빠뜨려 다리로 쓴다
   L.add({ type: 'flag', x: X(73), y: X(9), idx: 3 });
   L.fill(75, 9, 84, 9, 'I');
@@ -141,7 +150,7 @@ S.raft = () => {
 };
 
 /* 6. 찌릿찌릿 — 전기 회로: 병렬은 스위치 하나만, 직렬은 모두 눌러야 전류가 흐른다 */
-S.circuit = () => {
+S.circuit = (R) => {
   const L = new LB(68, 17);
   L.fill(0, GY, 67, 16);
   L.spawn = { x: X(1), y: X(GY) };
@@ -157,9 +166,10 @@ S.circuit = () => {
   L.add({ type: 'flag', x: X(19), y: X(GY), idx: 1 });
   // 직렬 회로: 스위치를 모두 함께 눌러야 전구가 켜지고, 잠깐 켜져 있으면 문이 딸깍 열린 채로 남는다 (인원이 적으면 스위치가 줄어든다)
   L.add({ type: 'sign', x: X(21), y: X(GY), txt: '직렬', size: 15 });
-  const ss = [], sx = [23, 26, 29, 32];
+  const ss = [], sx = R.slots([22, 23, 25, 26, 28, 29, 31, 32, 33], 4, [23, 26, 29, 32]).reduce((a, c) => { if (!a.length || c - a[a.length - 1] >= 2) a.push(c); return a; }, []);
+  while (sx.length < 4) sx.push(sx[sx.length - 1] + 2);
   sx.forEach((c, k) => ss.push(L.add({ type: 'btn', x: X(c), y: X(GY), w: 48, need: 1, style: 'sw', minN: k + 1 })));
-  const rl = L.add({ type: 'relay', link: ss, mode: 'all', latchT: 1.2 });
+  const rl = L.add({ type: 'relay', link: ss, mode: 'all', latchT: 2.5 });
   L.fill(36, 0, 37, 10);
   L.add({ type: 'door', x: X(36) + 8, y: X(11), w: 48, h: 64, link: [rl] });
   L.add({ type: 'wire', pts: [[X(23) + 24, X(10)], [X(36), X(10)]], link: ss, mode: 'all' });
@@ -169,7 +179,7 @@ S.circuit = () => {
   const b1 = L.add({ type: 'btn', x: X(43), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true });
   L.fill(46, GY, 54, 16, ' ');
   const b2 = L.add({ type: 'btn', x: X(56), y: X(GY), w: 64, need: 1, style: 'sw' });
-  L.add({ type: 'door', x: X(46), y: X(GY), w: X(9), h: 14, link: [b1, b2], inv: true, rate: 1.2, style: 'bridge' });
+  L.add({ type: 'door', x: X(46), y: X(GY), w: X(9), h: 14, link: [b1, b2], inv: true, rate: 3, style: 'bridge' });
   L.add({ type: 'wire', pts: [[X(44), X(GY)], [X(44), X(11)], [X(58) - 12, X(11)], [X(58) - 12, X(GY)]], link: [b1, b2] });
   L.add({ type: 'flag', x: X(59), y: X(GY), idx: 3 });
   L.add({ type: 'exit', x: X(63), y: X(GY) - 60, w: 44, h: 60 });
@@ -177,16 +187,18 @@ S.circuit = () => {
 };
 
 /* 7. 불을 꺼라 — 연소의 세 조건(탈 물질·산소·발화점)을 하나씩 없앤다 */
-S.fire = () => {
+S.fire = (R) => {
   const L = new LB(60, 17);
   L.fill(0, GY, 59, 16);
   L.spawn = { x: X(1), y: X(GY) };
   // 산소 막기: 공기 구멍 두 곳을 함께 막으면 불이 꺼진다
-  L.add({ type: 'sign', x: X(4), y: X(GY), txt: '산소 차단', size: 13, w: 84 });
-  const v1 = L.add({ type: 'btn', x: X(8), y: X(GY), w: 64, need: 1, style: 'vent', soloLatch: true });
-  const v2 = L.add({ type: 'btn', x: X(12), y: X(GY), w: 64, need: 1, style: 'vent', minN: 2 });
+  L.add({ type: 'sign', x: X(1), y: X(10), txt: '산소 차단', size: 13, w: 84 });
+  const vx = R.slots([3, 6, 9, 12], 3, [8, 12, 4]);
+  const v1 = L.add({ type: 'btn', x: X(vx[0]), y: X(GY), w: 64, need: 1, style: 'vent', soloLatch: true });
+  const v2 = L.add({ type: 'btn', x: X(vx[1]), y: X(GY), w: 64, need: 1, style: 'vent', minN: 2 });
+  const v3 = L.add({ type: 'btn', x: X(vx[2]), y: X(GY), w: 64, need: 1, style: 'vent', minN: 3 });
   L.fill(17, 0, 19, 8);
-  L.add({ type: 'fire', x: X(17), y: X(9), w: 96, h: 128, link: [v1, v2], mode: 'all', stay: true });
+  L.add({ type: 'fire', x: X(17), y: X(9), w: 96, h: 128, link: [v1, v2, v3], mode: 'all', stay: true });
   L.add({ type: 'flag', x: X(21), y: X(GY), idx: 1 });
   // 탈 물질 치우기: 장작 상자 위에서 불이 탄다. 상자를 밀어 내면 꺼진다
   L.add({ type: 'sign', x: X(24), y: X(GY), txt: '탈 물질', size: 13, w: 76 });
@@ -208,13 +220,13 @@ S.fire = () => {
 };
 
 /* 8. 두둥실 — 기체는 데우면 부피가 커져 가벼워진다: 버너를 켜면 열기구가 뜬다 */
-S.balloon = () => {
+S.balloon = (R) => {
   const L = new LB(72, 17);
   L.fill(0, GY, 71, 16);
   L.spawn = { x: X(1), y: X(GY) };
   // 높은 언덕으로 올라가는 열기구. 아래 버너든 위 버너든 켜져 있으면 뜬다
   L.fill(17, 7, 30, 12);
-  const h1 = L.add({ type: 'btn', x: X(8), y: X(GY), w: 64, need: 1, style: 'heat' });
+  const h1 = L.add({ type: 'btn', x: X(R.i(6, 9, 8)), y: X(GY), w: 64, need: 1, style: 'heat' });          // 처음 서 있는 자리(1~5칸)와 겹치지 않게
   const h2 = L.add({ type: 'btn', x: X(19), y: X(7), w: 64, need: 1, style: 'heat' });
   L.add({ type: 'lift', x: X(13) + 16, y: X(GY) - 16, w: 112, h: 16, x2: X(13) + 16, y2: X(7), speed: 60, link: [h1, h2], solo: true, style: 'balloon' });
   L.add({ type: 'flag', x: X(23), y: X(7), idx: 1 });
@@ -222,7 +234,7 @@ S.balloon = () => {
   L.fill(31, GY, 46, 16, ' ');
   L.fill(47, 5, 58, 16);
   const h3 = L.add({ type: 'btn', x: X(26), y: X(7), w: 64, need: 1, style: 'heat' });
-  const h4 = L.add({ type: 'btn', x: X(50), y: X(5), w: 64, need: 1, style: 'heat' });
+  const h4 = L.add({ type: 'btn', x: X(R.i(49, 53, 50)), y: X(5), w: 64, need: 1, style: 'heat' });
   L.add({ type: 'lift', x: X(29) + 8, y: X(7) - 16, w: 112, h: 16, x2: X(43) + 8, y2: X(5), speed: 70, link: [h3, h4], solo: true, style: 'balloon' });
   L.add({ type: 'flag', x: X(53), y: X(5), idx: 2 });
   L.add({ type: 'exit', x: X(65), y: X(GY) - 60, w: 44, h: 60 });
@@ -230,7 +242,7 @@ S.balloon = () => {
 };
 
 /* 9. 꽁꽁 사르르 — 상태 변화: 물을 얼려 다리를 놓고, 얼음벽은 녹인다 */
-S.freeze = () => {
+S.freeze = (R) => {
   const L = new LB(70, 17);
   L.fill(0, GY, 69, 16);
   L.spawn = { x: X(1), y: X(GY) };
@@ -239,12 +251,12 @@ S.freeze = () => {
   L.add({ type: 'water', x: X(10), y: X(GY) + 7, w: X(10), h: 89 });
   const c1 = L.add({ type: 'btn', x: X(6), y: X(GY), w: 64, need: 1, style: 'cool', soloLatch: true });
   const c2 = L.add({ type: 'btn', x: X(21), y: X(GY), w: 64, need: 1, style: 'cool' });
-  L.add({ type: 'door', x: X(10), y: X(GY), w: X(10), h: 14, link: [c1, c2], inv: true, rate: 0.7, style: 'ice' });
+  L.add({ type: 'door', x: X(10), y: X(GY), w: X(10), h: 14, link: [c1, c2], inv: true, rate: 1.6, style: 'ice' });
   L.add({ type: 'flag', x: X(24), y: X(GY), idx: 1 });
   // 얼음벽: 가열판을 모두 함께 눌러야 녹는다 (인원이 적으면 가열판이 줄어든다)
-  const hs = [], hx = [27, 30, 33, 36];
+  const hs = [], hx = R.slots([26, 28, 30, 32, 34, 36], 4, [27, 30, 33, 36]);
   hx.forEach((c, k) => hs.push(L.add({ type: 'btn', x: X(c), y: X(GY), w: 48, need: 1, style: 'heat', minN: k + 1 })));
-  const rl = L.add({ type: 'relay', link: hs, mode: 'all', latchT: 1.5 });
+  const rl = L.add({ type: 'relay', link: hs, mode: 'all', latchT: 3 });
   L.fill(40, 0, 41, 6);
   L.add({ type: 'door', x: X(40), y: X(7), w: 64, h: X(6), link: [rl], rate: 0.8, style: 'icewall' });
   L.add({ type: 'flag', x: X(44), y: X(GY), idx: 2 });
@@ -253,13 +265,13 @@ S.freeze = () => {
   L.add({ type: 'water', x: X(50), y: X(GY) + 7, w: X(12), h: 89 });
   const c3 = L.add({ type: 'btn', x: X(46), y: X(GY), w: 64, need: 1, style: 'cool', soloLatch: true });
   const c4 = L.add({ type: 'btn', x: X(63), y: X(GY), w: 64, need: 1, style: 'cool' });
-  L.add({ type: 'door', x: X(50), y: X(GY), w: X(12), h: 14, link: [c3, c4], inv: true, rate: 1.4, style: 'ice' });
+  L.add({ type: 'door', x: X(50), y: X(GY), w: X(12), h: 14, link: [c3, c4], inv: true, rate: 3, style: 'ice' });
   L.add({ type: 'exit', x: X(66), y: X(GY) - 60, w: 44, h: 60 });
   return L.done({ id: 'freeze', name: '꽁꽁 사르르', sub: '얼리면 다리, 데우면 녹는 벽', sci: '상태 변화' });
 };
 
 /* 10. 빛을 따라 — 빛의 반사: 거울 방향을 바꿔 빛을 감지기에 맞힌다 */
-S.light = () => {
+S.light = (R) => {
   const L = new LB(64, 17);
   L.fill(0, GY, 63, 16);
   L.spawn = { x: X(1), y: X(GY) };
@@ -267,21 +279,23 @@ S.light = () => {
   L.add({ type: 'beam', x: X(2), y: X(6), dir: 0 });
   L.fill(1, 7, 3, 7);
   const p1 = L.add({ type: 'btn', x: X(8), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true });
-  L.add({ type: 'mirror', x: X(13), y: X(6), d: 0, link: [p1] });
-  const z1 = L.add({ type: 'sensor', x: X(13), y: X(11), latchT: 0.5 });
+  L.add({ type: 'mirror', x: X(13), y: X(6), d: 0, ok: 1, link: [p1] });
+  const z1 = L.add({ type: 'sensor', x: X(13), y: X(11), latchT: 1.5 });
   L.fill(16, 0, 17, 10);
   L.add({ type: 'door', x: X(16) + 8, y: X(11), w: 48, h: 64, link: [z1] });
   L.add({ type: 'flag', x: X(19), y: X(GY), idx: 1 });
   // 거울 둘 + 헷갈리게 하는 발판: 맞는 발판 둘을 함께 밟는다 (가운데 발판을 밟으면 거울이 하나 더 나타나 빛을 가로챈다)
   L.add({ type: 'beam', x: X(21), y: X(4), dir: 0 });
   L.fill(20, 5, 22, 5);
-  const p2 = L.add({ type: 'btn', x: X(23), y: X(GY), w: 64, need: 1, style: 'sw' });
-  const p4 = L.add({ type: 'btn', x: X(27), y: X(GY), w: 64, need: 1, style: 'sw' });
-  const p3 = L.add({ type: 'btn', x: X(31), y: X(GY), w: 64, need: 1, style: 'sw', minN: 2 });
-  L.add({ type: 'mirror', x: X(35), y: X(4), d: 0, link: [p2] });
+  const px = R.perm([23, 27, 31]);
+  let d2 = R.b(false) ? 1 : 0, d3 = R.b(false) ? 1 : 0; if (d2 === 1 && d3 === 1) { if (R.b(true)) d2 = 0; else d3 = 0; }   // 둘 다 처음부터 맞으면 하나는 틀어 둔다
+  const p2 = L.add({ type: 'btn', x: X(px[0]), y: X(GY), w: 64, need: 1, style: 'sw' });
+  const p4 = L.add({ type: 'btn', x: X(px[1]), y: X(GY), w: 64, need: 1, style: 'sw' });
+  const p3 = L.add({ type: 'btn', x: X(px[2]), y: X(GY), w: 64, need: 1, style: 'sw' });
+  L.add({ type: 'mirror', x: X(35), y: X(4), d: d2, ok: 1, link: [p2] });
   L.add({ type: 'mirror', x: X(35), y: X(7), d: 0, link: [p4], opt: true });
-  L.add({ type: 'mirror', x: X(35), y: X(10), d: 0, link: [p3] });
-  const z2 = L.add({ type: 'sensor', x: X(39), y: X(10), latchT: 0.6 });
+  L.add({ type: 'mirror', x: X(35), y: X(10), d: d3, ok: 1, link: [p3], soloOk: true });
+  const z2 = L.add({ type: 'sensor', x: X(39), y: X(10), latchT: 2 });
   L.fill(41, 0, 42, 10);
   L.add({ type: 'door', x: X(41) + 8, y: X(11), w: 48, h: 64, link: [z2] });
   L.add({ type: 'flag', x: X(44), y: X(GY), idx: 2 });
@@ -291,7 +305,7 @@ S.light = () => {
   L.fill(49, 10, 51, 10); L.fill(48, 12, 48, 12, 's');
   const p5 = L.add({ type: 'btn', x: X(49) + 16, y: X(10), w: 64, need: 1, style: 'sw' });
   L.add({ type: 'mirror', x: X(54), y: X(3), d: 0, link: [p5] });
-  const z3 = L.add({ type: 'sensor', x: X(54), y: X(9), latchT: 0.6 });
+  const z3 = L.add({ type: 'sensor', x: X(54), y: X(9), latchT: 2 });
   L.fill(56, 0, 57, 10);
   L.add({ type: 'door', x: X(56) + 8, y: X(11), w: 48, h: 64, link: [z3] });
   L.add({ type: 'exit', x: X(60), y: X(GY) - 60, w: 44, h: 60 });
@@ -300,5 +314,5 @@ S.light = () => {
 
 YC.order = ['push', 'ice', 'saw', 'spring', 'raft', 'circuit', 'fire', 'balloon', 'freeze', 'light'];
 const cache = {};
-YC.build = id => cache[id] || (cache[id] = S[id]());
+YC.build = (id, seed) => { const k = id + ':' + (seed >>> 0); if (!cache[k]) { const ks = Object.keys(cache); if (ks.length > 40) delete cache[ks[0]]; cache[k] = S[id](Rnd(seed >>> 0)); } return cache[k]; };
 })(typeof window !== 'undefined' ? window : globalThis);

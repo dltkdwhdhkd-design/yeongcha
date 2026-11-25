@@ -22,6 +22,14 @@ for (const id of YC.order) {
   for (let n = 1; n <= 6; n++) { let best = 1e9, bad = 0; for (const net of NETS) for (const seed of SEEDS) { const t = run(id, n, net, seed, false); if (t < 0) bad++; else best = Math.min(best, t); } row.push(n + '명 ' + (bad ? '실패 ' + bad : best.toFixed(0) + '초')); }
   console.log((YC.build(id).name + '        ').slice(0, 8), row.join('  '));
 }
+// 판마다 달라지는 배치(씨앗)로도 깨지는지
+{ let bad = 0, all = 0;
+  for (const id of ['ice', 'circuit', 'fire', 'balloon', 'freeze', 'light']) for (const n of [1, 2, 3, 4, 6]) for (const ls of [11, 222, 3333, 44444, 555555, 6789]) {
+    const s = new Sim({ n, stages: [id], delay: 80, jitter: 20, loss: 0.01, seed: 7, lseed: ls }); scripts[id](s); all++;
+    if (s.run(300, () => s.teams.every(t => t.TS.ph === 4))) pass++; else { bad++; fail++; fails.push(id + ' ' + n + '명 배치 ' + ls + ' → ' + s.bots.map(b => b.err ? b.err.message : (b.done ? '끝' : '진행 중')).join(' | ')); }
+  }
+  console.log('여러 배치(씨앗) ' + all + '판 중 실패 ' + bad);
+}
 // 실제 게임처럼 서로 길을 막는 상태에서도
 for (const [id, n, net] of [['push', 2, [0, 0, 0]], ['push', 2, [150, 40, 0.02]], ['push', 3, [150, 40, 0.02]]]) run(id, n, net, 7, true);
 

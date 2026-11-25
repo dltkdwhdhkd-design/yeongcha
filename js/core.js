@@ -16,7 +16,7 @@ const G = 1800, JUMP_V = 536, MOVE = 170, MAX_FALL = 1000;
 const VIEW_W = 960, VIEW_H = 544;
 const PH_WAIT = 0, PH_READY = 1, PH_PLAY = 2, PH_CLEAR = 3, PH_DONE = 4;
 const SKIP_PEN = 90000;                       // 스테이지 넘기기 벌칙(ms)
-const opt = { noBlock: false };               // noBlock: 시험용. 사람끼리 서로 통과한다. 일부러 올라탈 때만(P.ride) 머리 위에 설 수 있다
+const opt = { noBlock: false, slim: false };               // noBlock: 시험용. 사람끼리 서로 통과한다. 일부러 올라탈 때만(P.ride) 머리 위에 설 수 있다
 
 const abs = Math.abs, min = Math.min, max = Math.max, sign = Math.sign, floor = Math.floor;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -69,7 +69,7 @@ function initObj(o) {
       o.x1 = o.x; o.y1 = o.y; if (o.x2 === undefined) o.x2 = o.x; if (o.y2 === undefined) o.y2 = o.y;
       o.len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1; o.t = 0; o.dirn = 1; o.wait = o.pause || 0; o.speed = o.speed || 70; o.mdx = 0; o.mdy = 0; break;
     case 'saw': if (o.lo === undefined) o.lo = -o.max; if (o.hi === undefined) o.hi = o.max; o.th = o.rest !== undefined ? o.rest : 0; o.om = 0; o.kq = 0; o.ks = 0; o.kp = 0; o.win = 0; o.winTh = 0; o.pend = []; o.seen = {}; o.I0 = o.L * o.L * 0.35; break;
-    case 'pad': o.comp = 0; o.load = 0; o.kq = 0; o.kp = 0; o.ok = 0; o.lat = 0; o.want = 0; o.relT = 0; o.relSum = 0; o.lastLd = 0; o.stab = 0; o.mdx = 0; o.mdy = 0; break;
+    case 'pad': o.comp = 0; o.load = 0; o.kq = 0; o.kp = 0; o.ok = 0; o.lat = 0; o.want = 0; o.relT = 0; o.relSum = 0; o.lastLd = 0; o.stab = 0; o.mdx = 0; o.mdy = 0; o.rel = []; o.jseen = {}; o.rOpen = 0; break;
     case 'raft': o.x1 = o.x; o.st = 0; o.tmr = 0; o.load = 0; o.sink = 0; o.lw = 0; o.h = o.h || 16; o.y = o.wy - o.rise; o.speed = o.speed || 64; o.mdx = 0; o.mdy = 0; break;
     case 'key': o.hx = o.x; o.hy = o.y; o.hd = -1; o.used = 0; break;
     case 'exit': o.open = o.locked ? 0 : 1; break;
@@ -246,7 +246,7 @@ function Player(slot) {
   this.saw = 0; this.sawS = 0;
   this.coy = 0; this.jbuf = 0; this.jumping = false; this.dead = 0; this.fin = false; this.free = 0;
   this.ck = 0; this.want = false; this.ul = false; this.vote = 0; this.atExit = false; this.em = 0;
-  this.ldSeq = 0; this.ldObj = 0; this.ldV = 0; this.ldS = 0;
+  this.ldSeq = 0; this.ldObj = 0; this.ldV = 0; this.ldS = 0; this.ldT = 0; this.jSeq = 0; this.jObj = 0; this.jT = 0;   // ldT·jT: 내려앉은·뛰어오른 때(내 시계)
   this.riders = 0; this.kseen = {}; this.puT = 0; this.puKeep = 0; this.ride = false;
   this.stat = [0, 0, 0, 0, 0];                  // 민 시간, 반대로 민 시간, 빠진 횟수, 받쳐 준 시간, 올라탄 시간
   this.land = 0; this.ev = [];
@@ -381,7 +381,7 @@ function stepPlayer(P, inp, W, GS, dt, env) {
   if (P.jbuf > 0 && (P.gr || P.coy > 0)) {
     P.jbuf = 0;
     if (riders > 0) ev.push(['heavy']);                                                    // 머리 위에 누가 있으면 못 뛴다
-    else { P.vy = -JUMP_V + min(0, supVy) * 0.5; P.vx += supVx; P.gr = false; P.gRef = 0; P.saw = 0; P.coy = 0; P.jumping = true; ev.push(['jump']); }
+    else { P.jSeq++; P.jObj = P.gRef > 0 ? P.gRef : 0; P.vy = -JUMP_V + min(0, supVy) * 0.5; P.vx += supVx; P.gr = false; P.gRef = 0; P.saw = 0; P.coy = 0; P.jumping = true; ev.push(['jump']); }
   }
   if (P.jumping && !inp.j && P.vy < -230) P.vy = -230;
   if (P.vy >= 0) P.jumping = false;
@@ -526,7 +526,7 @@ function ridersOn(R, slot) { let c = 0; const tw = makeTotals(R); for (let j = 0
 
 /* 빛: 광원에서 칸 단위로 나아가다 거울에서 꺾이고, 벽·닫힌 문에서 멈춘다. 감지기에 닿으면 hit */
 const BDX = [1, 0, -1, 0], BDY = [0, 1, 0, -1];
-function mirrorFlip(W, m) { return m.opt ? (m.d || 0) : ((m.d || 0) ^ (linkOn(W, m) ? 1 : 0)) & 1; }   // 0: '/'  1: '\'  (opt: 연결이 켜질 때만 나타나는 거울)
+function mirrorFlip(W, m) { if (m.soloOk && W.n <= 1) return m.ok | 0; return m.opt ? (m.d || 0) : ((m.d || 0) ^ (linkOn(W, m) ? 1 : 0)) & 1; }   // 0: '/'  1: '\'  (opt: 연결이 켜질 때만 나타나는 거울)
 function mirrorOn(W, m) { return !m.opt || linkOn(W, m); }
 function traceBeam(W, src) {
   let cx = floor(src.x / T), cy = floor(src.y / T), dir = src.dir | 0; const pts = [[cx * T + 16, cy * T + 16]]; let hit = null;
@@ -553,6 +553,9 @@ function linkOn(W, o) {
 function raftCap(o, n) { return n <= 1 ? 1 : (o.cap || 3); }
 function launchNeed(n) { return min(3, max(1, n - 1)); }                                 // 시소 발사: 동시에 뛰어내려야 하는 사람 수
 
+/* '동시에' 판정: 실제로 SYNC_WIN(ms) 안에 뛰었으면 동시. 통신이 느릴수록 늦게 오는 것을 조금 더 기다린다 */
+const SYNC_WIN = 380;
+function syncWait(W) { return SYNC_WIN + 60 + min(250, (W.lag || 0) * 0.6); }
 function simWorld(W, R, dt) {
   const n = W.n, ev = W.ev, tw = makeTotals(R), ld = {}, push = {};
   for (let i = 0; i < R.length; i++) {
@@ -589,14 +592,12 @@ function simWorld(W, R, dt) {
       const w = ld[o.id] || 0, per = o.maxc / n, tgt = min(o.maxc, w * per), oc = o.comp;
       o.load = w;
       if (o.mode === 'launch') {
-        if (w < o.lastLd) { if (o.relT <= 0) { o.relT = 0.3; o.relSum = 0; } o.relSum += o.lastLd - w; }
-        else if (w > o.lastLd && o.relT > 0) o.relSum = max(0, o.relSum - (w - o.lastLd));
-        if (o.relT > 0) {
-          o.relT -= dt;
-          if (o.relT <= 0) {                                                             // 모아서 한 번에 튕긴다
-            if (w >= 1 && o.relSum >= 1) { o.kq++; o.kp = r2(min(1, o.relSum / max(1, n - 1)) / Math.sqrt(w)); o.comp = max(0, tgt - 8); }
-            o.relSum = 0; o.relT = 0;
-          }
+        for (let i = 0; i < R.length; i++) { const r = R[i]; if (r && r.jObj === o.id && r.jSeq !== (o.jseen[i] || 0)) { o.jseen[i] = r.jSeq; o.rel.push(r.jTc); } }
+        if (o.rel.length && !(o.relT > 0)) { o.relT = 1; o.rOpen = W.now || 0; }
+        if (o.relT > 0 && (W.now || 0) - o.rOpen >= syncWait(W)) {                       // 늦게 도착한 것까지 기다렸다가, 실제로 거의 같은 때 뛴 사람 수만큼 튕긴다
+          const t0 = Math.min.apply(null, o.rel); let c = 0; for (const t of o.rel) if (t - t0 <= SYNC_WIN) c++;
+          if (w >= 1 && c >= 1) { o.kq++; o.kp = r2(min(1, c / max(1, n - 1)) / Math.sqrt(w)); o.comp = max(0, tgt - 8); }
+          o.rel.length = 0; o.relT = 0;
         }
       } else {                                                                           // 저울: 딱 맞는 무게가 잠깐 유지되면 켜진다
         const want = needOf(o.eq, n);
@@ -693,7 +694,7 @@ function simBox(W, b, dt, pu, riders) {
 }
 
 /* ───────────────────────── 받은 상태를 부드럽게 잇기 ───────────────────────── */
-function Stream(fixed) { this.buf = []; this.off = Infinity; this.delay = fixed || 110; this.fixed = fixed || 0; this.ivl = 66; this.jit = 0; this.lastRecv = 0; this.lastT = -1; }
+function Stream(fixed) { this.buf = []; this.off = Infinity; this.delay = fixed || 70; this.fixed = fixed || 0; this.ivl = 66; this.jit = 0; this.lastRecv = 0; this.lastT = -1; }
 Stream.prototype.push = function (t, d, now) {
   const raw = now - t;
   if (this.lastT >= 0 && t < this.lastT - 2000) { this.buf.length = 0; this.off = Infinity; this.lastT = -1; }   // 보낸 기기가 새로 고침함(시계가 되돌아감)
@@ -710,7 +711,7 @@ Stream.prototype.push = function (t, d, now) {
 };
 Stream.prototype.sample = function (now) {
   const b = this.buf; if (!b.length) return null;
-  if (!this.fixed) { const want = clamp(1.5 * this.ivl + 2.2 * this.jit + 10, 40, 420); this.delay += clamp(want - this.delay, -0.5, 0.5); }
+  if (!this.fixed) { const want = clamp(1.3 * this.ivl + 2 * this.jit + 6, opt.slim ? 14 : 30, 420); this.delay += clamp(want - this.delay, -0.8, 0.8); }   // 받은 간격·흔들림에 맞춰 가장 짧게 (slim: 한 기기 안의 혼자 연습)
   const tr = now - this.off - this.delay;
   while (b.length > 2 && b[1].t <= tr) b.shift();
   if (b.length === 1 || tr <= b[0].t) return { a: b[0].d, b: b[0].d, k: 0 };
@@ -728,17 +729,18 @@ function Ghost(slot) {
 
 /* ───────────────────────── 한 팀(한 기기)의 게임 ─────────────────────────
    o: { slot, slots:[팀의 자리 번호들], stages:[스테이지 id], build(id)->def, seq0 }                    */
+const lseed = (seed, stage) => seed ? (((seed | 0) * 7919) ^ (stage * 104729)) >>> 0 || 1 : 0;
 function Team(o) {
   this.slot = o.slot; this.slots = o.slots.slice().sort((a, b) => a - b); this.idx = this.slots.indexOf(o.slot);
   this.stages = o.stages; this.build = o.build;
   this.me = new Player(o.slot); this.ghosts = {}; this.gs = [];
   for (const s of this.slots) if (s !== o.slot) this.ghosts[s] = new Ghost(s);
-  this.TS = { stage: 0, run: 0, ph: PH_WAIT, tm: 0, ck: 0, n: 1, cd: 0, cl: [], sk: [] };
+  this.TS = { stage: 0, run: 0, ph: PH_WAIT, tm: 0, ck: 0, n: this.slots.length, cd: 0, cl: [], sk: [] };
   this.W = null; this.anchor = false; this.epoch = 0; this.seenEp = 0; this.aSlot = -1; this.lastW = -1e9; this.t0 = -1; this.ws = new Stream(); this.wq = -1;
   this.out = []; this.ev = []; this.seq = o.seq0 || 0; this.wseq = o.seq0 || 0; this.lastPT = -1e9; this.lastWT = -1e9; this.lastVT = -1e9; this.lastP = null; this.lastO = ''; this.statT = 0;
   this.hist = []; this.selfDelay = 0; this.R = []; this.live = null; this.tmAt = 0; this.cd0 = 3; this.skipReq = -1; this.lastRestart = -1e9; this.now = 0;
   this.pIvl = 66; this.wIvl = 83; this.vIvl = 200; this.burst = 0; this.team = o.team | 0; this.spect = !!o.spect;
-  this.late = !!o.late; this.heard = false;                                              // late: 게임 중간에 (다시) 들어옴. heard: 팀 상태를 한 번이라도 받음
+  this.late = !!o.late; this.heard = false; this.seed = o.seed | 0;                    // seed: 같은 팀은 같은 값(방의 게임 번호) → 같은 배치                                              // late: 게임 중간에 (다시) 들어옴. heard: 팀 상태를 한 번이라도 받음
   this.load();
 }
 Team.prototype.sr = function () { return this.TS.stage * 64 + (this.TS.run % 64); };
@@ -753,7 +755,7 @@ Team.prototype.setSlots = function (slots) {
 Team.prototype.votes = function () { let v = this.me.vote ? 1 : 0, n = 1; for (const s of this.slots) if (s !== this.slot) { const g = this.ghosts[s]; if (g.present) { n++; if (g.rep && g.rep.vote && g.rep.sr === this.sr()) v++; } } return [v, n]; };
 Team.prototype.load = function () {
   const TS = this.TS, me = this.me;
-  this.W = new World(this.build(this.stages[TS.stage]));
+  this.W = new World(this.build(this.stages[TS.stage], lseed(this.seed, TS.stage)));
   this.W.n = TS.n; this.ws = new Stream(); this.hist.length = 0;
   me.fin = false; me.ck = 0; me.vote = 0; me.ldSeq = 0; me.ldObj = 0; me.kseen = {}; me.want = false; me.ul = false; me.atExit = false;
   for (const o of this.W.kickers) me.kseen[o.id] = 0;
@@ -766,7 +768,7 @@ Team.prototype.becomeAnchor = function () {
   this.anchor = true; this.epoch = this.seenEp + 1; this.seenEp = this.epoch; this.aSlot = this.slot;
   if (this.TS.ph === PH_WAIT) { this.TS.ph = PH_READY; this.TS.cd = this.cd0; }
   for (const o of this.W.saws) for (const s of this.slots) { const g = this.ghosts[s]; if (g && g.rep) o.seen[s] = g.rep.ldSeq; }
-  for (const o of this.W.objs) if (o.type === 'pad') { o.relT = 0; o.relSum = 0; }
+  for (const o of this.W.objs) if (o.type === 'pad') { o.relT = 0; o.relSum = 0; o.rel = []; for (const s of this.slots) { const g = this.ghosts[s]; if (g && g.rep) o.jseen[s] = g.rep.jSeq; } }
 };
 Team.prototype.role = function (now) {
   if (this.anchor || this.t0 < 0) return;
@@ -786,6 +788,8 @@ Team.prototype.onPlayer = function (from, p, now) {
     dir: fl & 128 ? 1 : fl & 256 ? -1 : 0, atExit: !!(fl & 512), gRef: p[8], gOff: p[9], hRef: p[10], hOff: p[11], pu: p[12], ck: p[13], ldSeq: p[14], ldObj: p[15], ldV: p[16], ldS: p[17], em: p[18] || 0, on: false };
   if (p[19]) g.stat = p[19];
   g.rep = rep; g.st.push(rep.t, rep, now);
+  // 뛰고 내려앉은 때를 내 시계로 옮긴다 (오는 데 걸린 시간을 빼서, 동시에 뛰었는지를 도착 순서가 아니라 실제 때로 가린다)
+  const fix = g.st.off - this.selfDelay; rep.jSeq = p[21] | 0; rep.jObj = p[22] | 0; rep.ldTc = p[20] ? p[20] + fix : now; rep.jTc = p[23] ? p[23] + fix : now;
 };
 Team.prototype.onWorld = function (from, d, now) {
   if (from === this.slot || !d || !d.ts) return;
@@ -822,7 +826,7 @@ Team.prototype.restore = function (s, now) {
 
 Team.prototype.myRep = function () {
   const m = this.me;
-  return { on: !(m.dead > 0) && !m.fin, sr: this.sr(), gRef: m.gRef, gOff: m.saw ? m.sawS : m.gOff, pu: m.pu, ck: m.ck, want: m.want, ul: m.ul, fin: m.fin, dead: m.dead > 0, vote: !!m.vote, ldSeq: m.ldSeq, ldObj: m.ldObj, ldV: m.ldV, ldS: m.ldS };
+  return { on: !(m.dead > 0) && !m.fin, sr: this.sr(), gRef: m.gRef, gOff: m.saw ? m.sawS : m.gOff, pu: m.pu, ck: m.ck, want: m.want, ul: m.ul, fin: m.fin, dead: m.dead > 0, vote: !!m.vote, ldSeq: m.ldSeq, ldObj: m.ldObj, ldV: m.ldV, ldS: m.ldS, ldTc: m.ldT, jSeq: m.jSeq, jObj: m.jObj, jTc: m.jT };
 };
 
 Team.prototype.flow = function (dt, now) {
@@ -918,9 +922,10 @@ Team.prototype.tick = function (inp, dt, now) {
     if (this.selfDelay > 20 && this.hist.length) {                                       // 내 보고도 남들만큼 늦춰서 센다(동시에 뛰기 판정을 공평하게)
       const lim = now - this.selfDelay; let h = null;
       for (let i = this.hist.length - 1; i >= 0; i--) if (this.hist[i].t <= lim) { h = this.hist[i].r; break; }
-      if (h) mine = Object.assign({}, this.live, { on: h.on && this.live.on, gRef: h.gRef, gOff: h.gOff, pu: h.pu, want: h.want, ul: h.ul, ldSeq: h.ldSeq, ldObj: h.ldObj, ldV: h.ldV, ldS: h.ldS });
+      if (h) mine = Object.assign({}, this.live, { on: h.on && this.live.on, gRef: h.gRef, gOff: h.gOff, pu: h.pu, want: h.want, ul: h.ul, ldSeq: h.ldSeq, ldObj: h.ldObj, ldV: h.ldV, ldS: h.ldS });   // 내 보고도 남들만큼 늦춰 센다 (동시에 뛰기 판정을 공평하게)
     }
     const RA = R.slice(); RA[this.slot] = mine;
+    W.now = now; W.lag = this.selfDelay;
     if (this.TS.ph >= PH_READY && this.TS.ph <= PH_CLEAR) simWorld(W, RA, dt);
   } else {
     const s = this.ws.sample(now);
@@ -932,7 +937,9 @@ Team.prototype.tick = function (inp, dt, now) {
   W.observe();
   // 내 캐릭터
   applyKicks(me, W);
+  const ld0 = me.ldSeq, j0 = me.jSeq;
   stepPlayer(me, inp, W, this.gs, dt, { riders: ridersOn(R, this.slot), frozen: TS.ph !== PH_PLAY, ck: TS.ck, idx: this.idx });
+  if (me.ldSeq !== ld0) me.ldT = now; if (me.jSeq !== j0) me.jT = now;
   const rep = this.myRep(); this.hist.push({ t: now, r: rep }); while (this.hist.length > 80) this.hist.shift();
   // 열쇠는 든 사람 머리 위에
   const k = W.key;
@@ -945,7 +952,7 @@ Team.prototype.tick = function (inp, dt, now) {
 Team.prototype.packMe = function (now) {
   const m = this.me;
   const fl = (m.gr ? 1 : 0) | (m.face < 0 ? 2 : 0) | (m.dead > 0 ? 4 : 0) | (m.fin ? 8 : 0) | (m.want ? 16 : 0) | (m.ul ? 32 : 0) | (m.vote ? 64 : 0) | (m.dir > 0 ? 128 : m.dir < 0 ? 256 : 0) | (m.atExit ? 512 : 0);
-  return [0, r0(now), this.sr(), r1(m.x), r1(m.y), r0(m.vx), r0(m.vy), fl, m.gRef, r1(m.saw ? m.sawS : m.gOff), m.hRef, r1(m.hOff), m.pu, m.ck, m.ldSeq, m.ldObj, r0(m.ldV), r1(m.ldS), m.em];
+  return [0, r0(now), this.sr(), r1(m.x), r1(m.y), r0(m.vx), r0(m.vy), fl, m.gRef, r1(m.saw ? m.sawS : m.gOff), m.hRef, r1(m.hOff), m.pu, m.ck, m.ldSeq, m.ldObj, r0(m.ldV), r1(m.ldS), m.em, 0, r0(m.ldT), m.jSeq, m.jObj, r0(m.jT)];
 };
 Team.prototype.send = function (now) {
   const p = this.packMe(now); let same = !!this.lastP;
@@ -987,12 +994,12 @@ Team.prototype.people = function () {
 };
 
 /* ───────────────────────── 선생님 화면용: 한 팀을 받아서 보여 주기 ───────────────────────── */
-function Viewer(o) { this.stages = o.stages; this.build = o.build; this.W = null; this.key = -1; this.st = new Stream(260); this.TS = { stage: 0, run: 0, ph: PH_WAIT, tm: 0, ck: 0, n: 1, cd: 0, cl: [], sk: [] }; this.pl = []; this.last = -1e9; this.tmAt = 0; this.stat = {}; this.pr = 0; this.ev = []; this.q = -1; this.a = -1; }
+function Viewer(o) { this.stages = o.stages; this.build = o.build; this.seed = o.seed | 0; this.W = null; this.key = -1; this.st = new Stream(260); this.TS = { stage: 0, run: 0, ph: PH_WAIT, tm: 0, ck: 0, n: 1, cd: 0, cl: [], sk: [] }; this.pl = []; this.last = -1e9; this.tmAt = 0; this.stat = {}; this.pr = 0; this.ev = []; this.q = -1; this.a = -1; }
 Viewer.prototype.onPacket = function (d, now) {
   if (!d || !d.ts || !d.o) return;
   if (d.a === this.a && d.t <= this.q && this.q - d.t < 5000) return;
   const ts = d.ts, key = ts[0] * 64 + (ts[1] % 64), TS = this.TS;
-  if (key !== this.key || !this.W) { if (ts[0] >= this.stages.length) return; this.key = key; this.W = new World(this.build(this.stages[ts[0]])); this.st = new Stream(260); }
+  if (key !== this.key || !this.W) { if (ts[0] >= this.stages.length) return; this.key = key; this.W = new World(this.build(this.stages[ts[0]], lseed(this.seed, ts[0]))); this.st = new Stream(260); }
   if (d.a !== this.a) { this.a = d.a; this.st = new Stream(260); }
   this.q = d.t;
   TS.stage = ts[0]; TS.run = ts[1]; TS.ph = ts[2]; TS.tm = ts[3]; TS.ck = ts[4]; TS.n = ts[5]; TS.cd = ts[6] / 100; TS.cl = d.cl || []; TS.sk = d.sk || [];
@@ -1014,7 +1021,8 @@ Viewer.prototype.update = function (now) {
 Viewer.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH_PLAY && now - this.last < 3000 ? TS.tm + (now - this.tmAt) : TS.tm; };
 Viewer.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
 
-const YC = { T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
-  opt, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
+const VERSION = 4;                               // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
+const YC = { VERSION, T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
+  opt, lseed, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
 if (typeof module !== 'undefined' && module.exports) module.exports = YC; else root.YC = YC;
 })(typeof window !== 'undefined' ? window : globalThis);

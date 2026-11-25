@@ -9,6 +9,7 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ==
 const qs = new URLSearchParams(location.search);
 const teamName = k => (k + 1) + '팀';
 const MEDAL = ['🥇', '🥈', '🥉'];
+function freshReload() { try { const k = 'yc-fresh', t = +sessionStorage.getItem(k) || 0; if (Date.now() - t < 20000) return; sessionStorage.setItem(k, String(Date.now())); } catch (e) {} location.replace(location.pathname + '?fresh=' + Date.now()); }
 function show(id) { document.querySelectorAll('.scr').forEach(s => s.classList.toggle('on', s.id === id)); }
 function face(slot, size) { const c = el('canvas'); c.width = (size || 22) * 2; c.height = Math.round((size || 22) * 2 * 48 / 44); RD.face(c, slot, slot); return c; }
 document.addEventListener('pointerdown', () => A.unlock(), { passive: true });
@@ -49,7 +50,7 @@ function toast(s) { const t = $('h-toast'); t.textContent = s; t.hidden = false;
 function startGame(o) {
   stopGame();
   G.solo = !!o.solo; G.names = o.names || {}; G.send = o.send || null; G.myTeam = o.team | 0; G.onQuit = o.onQuit || null; G.practice = o.practice || null; G.errShown = '';
-  G.team = new YC.Team({ slot: o.slot, slots: o.slots, stages: o.stages, build: YC.build, team: o.team | 0, spect: !o.solo, late: !!o.late, seq0: Math.floor(Date.now() / 50) % 100000000 });
+  G.team = new YC.Team({ slot: o.slot, slots: o.slots, stages: o.stages, build: YC.build, team: o.team | 0, spect: !o.solo, late: !!o.late, seed: o.seed | 0, seq0: Math.floor(Date.now() / 50) % 100000000 });
   if (o.solo) G.team.cd0 = 1.4;
   if (o.restore) G.team.restore(o.restore, performance.now());
   G.snapKey = o.snapKey || null; G.snapT = 0;
@@ -82,7 +83,7 @@ function tick(now) {
   T.me.vote = now < G.voteUntil ? 1 : 0;
   if (!G.solo && now - G.rttT > 1000) {                                                     // 통신 길에 맞춰 보내는 빠르기를 정한다
     G.rttT = now; const st = Net.status(), dir = st.want > 0 && st.direct >= st.want;
-    G.rtt = st.rtt || 0; T.selfDelay = dir ? 20 : Math.min(400, G.rtt); T.pIvl = dir ? 50 : 80; T.wIvl = dir ? 66 : 100; T.vIvl = 250;
+    G.rtt = st.rtt || 0; T.selfDelay = dir ? 20 : Math.min(400, G.rtt); T.pIvl = dir ? 33 : 66; T.wIvl = dir ? 50 : 83; T.vIvl = 250;   // 직접 연결이면 초당 30번
   }
   T.tick(inp, 1 / 60, now);
   if (G.snapKey && now - G.snapT > 1000 && (T.heard || T.anchor)) { G.snapT = now; SNAP.set(Object.assign({ at: Date.now(), s: T.snap(now) }, G.snapKey)); }   // 새로 고침 대비
@@ -190,7 +191,7 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 function soloStart(stages) {
   A.play('ui'); const nAI = +store.get('yc-ai', '3'), quit = () => { stopGame(); show('s-solo'); };
   if (nAI > 0 && window.YCPractice) window.YCPractice.start({ stages: stages, nAI: nAI, onQuit: quit, startGame: o => startGame(Object.assign({ solo: true }, o)) });
-  else startGame({ slot: 0, slots: [0], stages: stages, solo: true, first: true, names: { 0: '나' }, onQuit: quit });
+  else startGame({ slot: 0, slots: [0], stages: stages, solo: true, first: true, names: { 0: '나' }, onQuit: quit, seed: 1 + Math.floor(Math.random() * 999999) });
 }
 (function () {
   const box = $('solo-list');
@@ -231,7 +232,7 @@ function joinRoom(name, code) {
   clearInterval(S.hello); S.hello = setInterval(studentBeat, 2000);
   show('s-wait'); updateWait();
 }
-function sayHi() { if (!S.on) return; S.hiAt = Date.now(); Net.say('c', { t: 'hi', n: S.name, br: Net.status().br }); }
+function sayHi() { if (!S.on) return; S.hiAt = Date.now(); Net.say('c', { t: 'hi', n: S.name, br: Net.status().br, v: YC.VERSION }); }
 function studentBeat() {
   sayHi(); if (S.on && !G.on) updateWait();
   // 대기실에서 팀이 정해지고 잠잠해지면 팀원끼리 미리 직접 연결해 둔다
@@ -252,6 +253,7 @@ function studentMsg(ch, d) {
 }
 function onRoom(d) {
   if (!Array.isArray(d.pl)) return;
+  if (d.ver && d.ver > YC.VERSION) { freshReload(); return; }                              // 선생님 판이 더 새것: 새로 받아 온다
   S.room = d; S.roomAt = Date.now(); if (typeof d.db === 'string') Net.db = d.db;
   if (d.closed) { leaveRoom('선생님이 방을 닫았어요.'); return; }
   if (Array.isArray(d.kick) && d.kick.indexOf(S.id) >= 0) { leaveRoom('선생님이 방에서 내보냈어요.'); return; }
@@ -289,7 +291,7 @@ function beginPlay(d, me, mates) {
   const team = me[2], slot = me[3], sn = SNAP.get();
   const restore = sn && sn.code === S.code && sn.run === d.run && sn.team === team && sn.slot === slot && Date.now() - sn.at < 180000 ? sn.s : null;
   startGame({ slot: slot, slots: slots, stages: d.st, team: team, names: names, first: (d.age | 0) < 6000 && slot === Math.min.apply(null, slots),
-    late: !!restore || (d.age | 0) >= 6000, restore: restore, snapKey: { code: S.code, run: d.run, team: team, slot: slot },
+    late: !!restore || (d.age | 0) >= 6000, restore: restore, seed: d.run | 0, snapKey: { code: S.code, run: d.run, team: team, slot: slot },
     send: (type, pay) => { if (type === 'v') Net.send('v', pay); else Net.team('t' + team + '/' + slot + '/' + type, pay); } });
   if (d.skip && d.skip[team] !== undefined) G.team.skipReq = d.skip[team];
 }
@@ -324,7 +326,7 @@ function showEnd(d, me) {
 const H = { on: false, code: '', id: '', ph: 'lobby', run: 0, t0: 0, players: new Map(), seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, timer: 0, db: '', manual: false, dirty: true, lastBeat: 0, lastUi: 0, final: null, frame: 0 };
 const SS = { get() { try { return JSON.parse(sessionStorage.getItem('yc-host') || 'null'); } catch (e) { return null; } }, set(v) { try { if (v) sessionStorage.setItem('yc-host', JSON.stringify(v)); else sessionStorage.removeItem('yc-host'); } catch (e) {} } };
 $('b-host').onclick = () => { A.play('ui'); hostOpen(null); };
-(function () { const s = SS.get(); if (s && s.code && Date.now() - s.at < 3 * 3600 * 1000) { const b = $('b-resume'); b.hidden = false; b.textContent = '열어 둔 방 ' + s.code + ' 다시 열기'; b.onclick = () => hostOpen(s); } })();
+(function () { const s = SS.get(); if (s && s.code && Date.now() - s.at < 3 * 3600 * 1000) { const b = $('b-resume'); b.hidden = false; b.textContent = '열어 둔 방 ' + s.code + ' 다시 열기'; b.onclick = () => hostOpen(s); let auto = false; try { auto = sessionStorage.getItem('yc-autoresume') === '1'; sessionStorage.removeItem('yc-autoresume'); } catch (e) {} if (auto) setTimeout(() => hostOpen(s), 50); } })();
 function hostOpen(saved) {
   stopGame(); S.on = false; clearInterval(S.hello);
   Object.assign(H, { on: true, ph: 'lobby', run: 0, t0: 0, seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, manual: false, dirty: true, final: null, finalStat: null, finalSplits: null, closed: false, db: '', lastUi: -1e9 });
@@ -343,10 +345,11 @@ $('hc-close').onclick = hostClose; $('he-close').onclick = hostClose;
 function hostMsg(ch, d, from) {
   if (!H.on || !d) return;
   const now = performance.now();
-  if (ch === 'v') { const k = d.k | 0; if (H.ph !== 'play' || k < 0 || k > 40) return; (H.viewers[k] || (H.viewers[k] = new YC.Viewer({ stages: H.stages, build: YC.build }))).onPacket(d, now); return; }
+  if (ch === 'v') { const k = d.k | 0; if (H.ph !== 'play' || k < 0 || k > 40) return; (H.viewers[k] || (H.viewers[k] = new YC.Viewer({ stages: H.stages, build: YC.build, seed: H.run }))).onPacket(d, now); return; }
   if (ch !== 'c' || !from) return;
   if (d.t === 'bye') { const p = H.players.get(from); if (p) { if (H.ph === 'lobby') { H.players.delete(from); if (!H.manual) assignAll(); } else p.last = -1e9; H.dirty = true; } return; }
   if (d.t !== 'hi' || H.kick.indexOf(from) >= 0) return;
+  if (d.v && d.v > YC.VERSION) { try { sessionStorage.setItem('yc-autoresume', '1'); } catch (e) {} hostSay(); freshReload(); return; }   // 학생 판이 더 새것: 선생님 화면도 새로 받아 와 방을 이어서 연다
   let p = H.players.get(from);
   if (!p) {
     if (H.players.size >= 60) return;
@@ -378,7 +381,7 @@ function rankNow() {
 }
 function hostSay() {
   const pl = [...H.players.values()].sort((a, b) => a.order - b.order).map(p => [p.id, p.name, p.team, p.slot]);
-  Net.say('h', { t: 'room', ph: H.ph, run: H.run, age: H.ph === 'play' ? Date.now() - H.t0 : 0, st: H.stages, db: H.db, pl: pl, skip: H.skip, kick: H.kick.slice(-30), closed: H.closed ? 1 : 0, rk: H.ph === 'end' && H.final ? H.final : rankNow() });
+  Net.say('h', { t: 'room', ver: YC.VERSION, ph: H.ph, run: H.run, age: H.ph === 'play' ? Date.now() - H.t0 : 0, st: H.stages, db: H.db, pl: pl, skip: H.skip, kick: H.kick.slice(-30), closed: H.closed ? 1 : 0, rk: H.ph === 'end' && H.final ? H.final : rankNow() });
   SS.set({ at: Date.now(), code: H.code, id: H.id, ph: H.ph, run: H.run, t0: H.t0, nTeams: H.nTeams, stages: H.stages, manual: H.manual, skip: H.skip, kick: H.kick.slice(-30), seq: H.seq, final: H.final, fstat: H.finalStat || null, fsplit: H.finalSplits || null, players: [...H.players.values()].map(p => ({ id: p.id, name: p.name, order: p.order, team: p.team, slot: p.slot })) });
 }
 function hostBeat() {

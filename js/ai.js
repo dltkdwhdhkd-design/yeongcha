@@ -212,12 +212,13 @@ scripts.ice = function (sim) {
     yield* b.wait(i * 0.2);
     // 얼음 위 가시 구덩이 셋을 달려가며 뛰어 넘는다 (빠지면 깃발에서 다시)
     yield* b.walkTo(X(46) + i * 6, 8, 30);
+    const gaps = []; for (let c = 46; c < 72; c++) if (b.T.W.ch(c, 10) === '^' && b.T.W.ch(c - 1, 10) !== '^') gaps.push(c);   // 판마다 구덩이 자리가 다르다
     for (let k = 0; k < 10 && b.cx() < X(72); k++) {
       yield* b.until(() => b.me.dead <= 0 && b.me.gr, 6);
       let t = 0, jt = 0;
       while (b.cx() < X(72) && b.me.dead <= 0 && t++ < 900) {
         b.inp.r = 1;
-        for (const g of [53, 59, 65]) if (b.me.gr && b.cx() > g * T - 30 && b.cx() < g * T - 8) jt = 14;
+        for (const g of gaps) if (b.me.gr && b.cx() > g * T - 30 && b.cx() < g * T - 8) jt = 14;
         b.inp.j = jt-- > 0 ? 1 : 0;
         yield;
       }
@@ -537,7 +538,7 @@ scripts.fire = function (sim) {
   sim.bots.forEach((b, i) => b.play(function* (b) {
     yield* b.until(() => b.T.TS.ph === 2, 10, '시작');
     // 공기 구멍 두 곳 막기
-    if (i < 2) yield* stand(b, ctr(btn(b, i)), 4); else yield* b.walkTo(X(5) - i * 10, 8, 30);
+    if (i < 3) yield* stand(b, ctr(btn(b, i)), 4); else yield* b.walkTo(X(6) - i * 10, 8, 30);
     yield* b.until(() => fire(b, 0).out > 0.99, 30, '첫 불 꺼짐');
     yield* b.walkTo(X(22) - i * 6, 8, 30);
     // 장작 상자 밀어 내기
@@ -581,8 +582,11 @@ scripts.light = function (sim) {
     yield* b.until(() => sensor(b, 0).on, 20, '첫 감지기');
     yield* b.walkTo(X(20) - i * 6, 8, 30);
     // 거울 둘 (가운데 발판은 밟지 않는다)
-    if (i === n - 1) yield* stand(b, ctr(btn(b, 1)), 4);
-    else if (i === n - 2) yield* stand(b, ctr(btn(b, 3)), 4);
+    const ms = b.T.W.objs.filter(o => o.type === 'mirror'), need = [];   // 처음부터 맞게 놓인 거울의 발판은 밟으면 안 된다
+    if (ms[1].d !== ms[1].ok) need.push(1);
+    if (ms[3].d !== ms[3].ok && !(ms[3].soloOk && n <= 1)) need.push(3);
+    if (i === n - 1 && need[0]) yield* stand(b, ctr(btn(b, need[0])), 4);
+    else if (i === n - 2 && need[1]) yield* stand(b, ctr(btn(b, need[1])), 4);
     yield* b.until(() => sensor(b, 1).on, 30, '둘째 감지기');
     yield* b.walkTo(X(44) - i * 6, 8, 30);
     // 높은 선반의 스위치

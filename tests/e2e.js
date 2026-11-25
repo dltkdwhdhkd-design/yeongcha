@@ -10,7 +10,7 @@ const { chromium } = require(process.env.PLAYWRIGHT || '/opt/npm-tools/node_modu
 const { serve } = require('../tools/serve.js');
 const ROOT = path.resolve(__dirname, '..') + '/';
 const N = +process.argv[2] || 4, TEAMS = +process.argv[3] || 1, RTC = process.argv[4] !== '0', STAGES = (process.argv[5] || 'push,ice,saw,spring,raft').split(','), SHOTS = process.argv[6] || '';
-const ALL = ['push', 'ice', 'saw', 'spring', 'raft'];
+const ALL = ['push', 'ice', 'saw', 'spring', 'raft', 'circuit', 'fire', 'balloon', 'freeze', 'light'];
 
 function broker() {
   const aedes = require(DEPS + '/aedes')(), { WebSocketServer, createWebSocketStream } = require(DEPS + '/ws');
