@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#aee3ff">
 <title>영차영차 — 힘을 모아야 넘어가는 협동 타임어택</title>
-<link rel="stylesheet" href="css/style.css?v=1">
+<link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
 
@@ -21,7 +21,7 @@
       <button class="btn" id="b-solo">혼자 연습</button>
     </div>
     <button class="btn slim" id="b-resume" hidden></button>
-    <p class="foot">중1 과학 · 힘의 작용 (알짜힘 · 마찰력 · 탄성력 · 부력)</p>
+    <p class="foot">중학교 과학 · 힘의 작용 (알짜힘 · 마찰력 · 탄성력 · 부력)</p>
   </div>
 </section>
 
@@ -56,7 +56,8 @@
 <section id="s-solo" class="scr">
   <div class="card wide">
     <h2>혼자 연습</h2>
-    <p class="msg">혼자서는 못 넘는 곳에 파란 디딤돌이 생겨요. 진짜 재미는 넷이 할 때!</p>
+    <p class="msg">AI 친구들과 한 팀이 돼요. 내가 할 일은 화살표로 알려 줘요. 고른 스테이지부터 끝까지 이어서 해요.</p>
+    <div class="setrow"><span>AI 친구</span><div class="chips" id="solo-ai"></div></div>
     <div class="stages" id="solo-list"></div>
     <div class="row"><button class="btn" data-go="s-title">뒤로</button><button class="btn green" id="b-solo-all">처음부터 이어서</button></div>
   </div>
@@ -133,11 +134,14 @@
   </div>
 </section>
 
-<script src="js/core.js?v=1"></script>
-<script src="js/levels.js?v=1"></script>
-<script src="js/net.js?v=1"></script>
-<script src="js/audio.js?v=1"></script>
-<script src="js/render.js?v=1"></script>
-<script src="js/app.js?v=1"></script>
+<script src="js/core.js?v=2"></script>
+<script src="js/levels.js?v=2"></script>
+<script src="js/net.js?v=2"></script>
+<script src="js/audio.js?v=2"></script>
+<script src="js/render.js?v=2"></script>
+<script src="js/bot.js?v=2"></script>
+<script src="js/ai.js?v=2"></script>
+<script src="js/practice.js?v=2"></script>
+<script src="js/app.js?v=2"></script>
 </body>
 </html>

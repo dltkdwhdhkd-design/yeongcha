@@ -90,14 +90,37 @@ function drawBox(c, o, n) {
     else label(c, '0', cx, o.y - 30, 15, '#ffd43b', INK);
   }
 }
-function drawBtn(c, o, n) {
-  const need = YC.needOf(o.need, n), up = o.on ? 2 : 6;
+const BTN_COL = { sw: ['#ffd43b', '#fab005'], vent: ['#ced4da', '#868e96'], heat: ['#ff8787', '#f03e3e'], cool: ['#a5d8ff', '#339af0'], water: ['#a5d8ff', '#1c7ed6'] };
+function drawBtn(c, o, n, t) {
+  if (o.style === 'hide') return;
+  if (o.minN && n < o.minN) { box(c, o.x + 2, o.y - 4, o.w - 4, 4, 2, '#dee2e6', '#adb5bd', 1.2); return; }    // 이 인원에서는 필요 없는 단추
+  const need = YC.needOf(o.need, n), up = o.on ? 2 : 6, st = BTN_COL[o.style];
   box(c, o.x - 3, o.y - 3, o.w + 6, 5, 2, '#5c636b', INK, 1.5);
-  box(c, o.x + 2, o.y - 3 - up, o.w - 4, up + 1, 2, o.on ? '#40c057' : '#fa5252', INK, 1.5);
+  box(c, o.x + 2, o.y - 3 - up, o.w - 4, up + 1, 2, st ? (o.on ? st[1] : st[0]) : (o.on ? '#40c057' : '#fa5252'), INK, 1.5);
+  if (st) {
+    const cx = o.x + o.w / 2, cy = o.y - 18 - (o.on ? 0 : 2);
+    if (o.style === 'heat') { c.fillStyle = o.on ? '#ff922b' : '#ffc9c9'; c.beginPath(); c.moveTo(cx, cy - 9 - (o.on ? Math.sin(t * 20) * 2 : 0)); c.quadraticCurveTo(cx + 8, cy, cx, cy + 6); c.quadraticCurveTo(cx - 8, cy, cx, cy - 9); c.fill(); }
+    else if (o.style === 'cool') { c.strokeStyle = o.on ? '#1c7ed6' : '#74c0fc'; c.lineWidth = 2; for (let k = 0; k < 3; k++) { const a = k * Math.PI / 3; c.beginPath(); c.moveTo(cx - Math.cos(a) * 7, cy - Math.sin(a) * 7); c.lineTo(cx + Math.cos(a) * 7, cy + Math.sin(a) * 7); c.stroke(); } }
+    else if (o.style === 'vent') { c.strokeStyle = '#495057'; c.lineWidth = 1.5; for (let k = 0; k < 4; k++) { c.beginPath(); c.moveTo(o.x + 10 + k * (o.w - 20) / 3, o.y - 6); c.lineTo(o.x + 10 + k * (o.w - 20) / 3, o.y - 2); c.stroke(); } if (!o.on) for (let k = 0; k < 3; k++) { const yy = cy - ((t * 30 + k * 9) % 26); c.strokeStyle = 'rgba(134,142,150,.6)'; c.beginPath(); c.arc(cx - 8 + k * 8, yy, 3, 0, TAU); c.stroke(); } }
+    else if (o.style === 'water') { c.fillStyle = '#1c7ed6'; c.fillRect(cx - 3, cy - 10, 6, 10); c.fillRect(cx - 3, cy - 10, 12, 5); }
+  }
   if (need > 1 || o.load) { const s = 9, gap = 12, x0 = o.x + o.w / 2 - (need - 1) * gap / 2; for (let i = 0; i < need; i++) pip(c, x0 + i * gap, o.y - 14, s, i < o.load ? '#37b24d' : '#f1f3f5', INK); }
 }
-function drawDoor(c, o) {
+function drawDoor(c, o, t) {
   const h = o.h * (1 - o.open);
+  if (o.style === 'ice' || o.style === 'bridge') {                    // 얼음 다리 · 빛다리: 녹을수록 옅어진다
+    if (h < 1) return; const a = 1 - o.open;
+    if (o.style === 'ice') { c.fillStyle = 'rgba(208,235,255,' + (0.55 + 0.4 * a) + ')'; c.fillRect(o.x, o.y, o.w, h); c.strokeStyle = 'rgba(116,192,252,' + a + ')'; c.lineWidth = 2; c.strokeRect(o.x, o.y, o.w, h); c.strokeStyle = 'rgba(255,255,255,.9)'; for (let x = o.x + 14; x < o.x + o.w; x += 46) { c.beginPath(); c.moveTo(x, o.y + 3); c.lineTo(x + 16, o.y + 3); c.stroke(); } }
+    else { c.fillStyle = 'rgba(102,217,232,' + (0.35 + 0.5 * a) + ')'; c.fillRect(o.x, o.y, o.w, h); c.strokeStyle = 'rgba(21,170,191,' + a + ')'; c.lineWidth = 2; c.strokeRect(o.x, o.y, o.w, h); c.fillStyle = 'rgba(255,255,255,.8)'; for (let x = o.x + ((t * 60) % 24); x < o.x + o.w - 4; x += 24) c.fillRect(x, o.y + 5, 8, 3); }
+    return;
+  }
+  if (o.style === 'icewall') {
+    if (h < 1) return;
+    box(c, o.x, o.y + o.h - h, o.w, h, 6, '#d0ebff', '#74c0fc', 2.5);
+    c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 3; c.beginPath(); c.moveTo(o.x + 12, o.y + o.h - h + 12); c.lineTo(o.x + 20, o.y + o.h - h + 40); c.moveTo(o.x + 40, o.y + o.h - h + 20); c.lineTo(o.x + 46, o.y + o.h - h + 36); c.stroke();
+    if (o.open > 0.02) { c.fillStyle = '#74c0fc'; for (let k = 0; k < 4; k++) { const yy = o.y + o.h - h + ((t * 70 + k * 23) % Math.max(10, h)); c.beginPath(); c.arc(o.x + 8 + k * 16, yy, 2.5, 0, TAU); c.fill(); } }
+    return;
+  }
   box(c, o.x - 4, o.y - 6, o.w + 8, 8, 2, '#495057', INK, 2);
   if (h < 1) return;
   c.save(); rr(c, o.x, o.y, o.w, h, 3); c.clip();
@@ -105,7 +128,73 @@ function drawDoor(c, o) {
   c.fillStyle = '#343a40'; for (let i = -6; i < 12; i++) { c.beginPath(); const yy = o.y + h - i * 16; c.moveTo(o.x, yy); c.lineTo(o.x + o.w, yy - 14); c.lineTo(o.x + o.w, yy - 22); c.lineTo(o.x, yy - 8); c.closePath(); c.fill(); }
   c.restore(); rr(c, o.x, o.y, o.w, h, 3); c.strokeStyle = INK; c.lineWidth = 2.5; c.stroke();
 }
-function drawLift(c, o) {
+/* 혼자 연습: 내가 할 일 표시 */
+function drawHint(c, h, me, t, cx, vw) {
+  if (!me) return;
+  const bob = Math.sin(t * 6) * 4, hx = me.x + PW / 2, hy = me.y - 34 + bob;
+  const say = s => label(c, s, hx, hy - 8, 15, '#fff', '#2b8a3e');
+  if (h.k === 'go' || h.k === 'jump') {
+    const x = Math.max(cx + 30, Math.min(cx + vw - 30, h.x)), y = me.y - 6 + bob;
+    c.fillStyle = '#51cf66'; c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath(); c.moveTo(x, y + 18); c.lineTo(x - 12, y); c.lineTo(x - 5, y); c.lineTo(x - 5, y - 16); c.lineTo(x + 5, y - 16); c.lineTo(x + 5, y); c.lineTo(x + 12, y); c.closePath(); c.fill(); c.stroke();
+    if (h.k === 'jump') say('점프!'); else if (Math.abs(h.x - hx) > 40) say(h.x > hx ? '여기로 →' : '← 여기로');
+  } else if (h.k === 'push') say(h.dir > 0 ? '→ 밀어요!' : '← 밀어요!');
+  else if (h.k === 'door') say('↓ 문으로!');
+}
+function drawWire(c, o, W, t) {
+  const on = YC.linkOn(W, o), P = o.pts;
+  c.lineJoin = 'round'; c.lineCap = 'round';
+  c.strokeStyle = INK; c.lineWidth = 6; c.beginPath(); P.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke();
+  c.strokeStyle = on ? '#ffd43b' : '#868e96'; c.lineWidth = 3; c.stroke();
+  if (on) { c.setLineDash([4, 10]); c.lineDashOffset = -t * 40; c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke(); c.setLineDash([]); }
+}
+function drawCell(c, o) {
+  box(c, o.x - 18, o.y - 12, 36, 24, 4, '#495057', INK, 2); box(c, o.x + 18, o.y - 5, 5, 10, 1, '#adb5bd', INK, 1.5);
+  label(c, '+', o.x + 9, o.y, 12, '#ff8787', null); label(c, '−', o.x - 9, o.y, 12, '#74c0fc', null);
+}
+function drawBulb(c, o, W, t) {
+  const on = YC.linkOn(W, o);
+  if (on) { c.fillStyle = 'rgba(255,236,153,.45)'; c.beginPath(); c.arc(o.x, o.y, 30 + Math.sin(t * 6) * 2, 0, TAU); c.fill(); }
+  c.fillStyle = on ? '#ffe066' : '#e9ecef'; c.strokeStyle = INK; c.lineWidth = 2; c.beginPath(); c.arc(o.x, o.y, 13, 0, TAU); c.fill(); c.stroke();
+  box(c, o.x - 7, o.y + 11, 14, 8, 2, '#adb5bd', INK, 1.5);
+}
+function drawFire(c, o, t) {
+  const k = 1 - o.out;
+  if (k <= 0.02) { c.fillStyle = 'rgba(73,80,87,.5)'; for (let i = 0; i < 4; i++) { const yy = o.y + o.h - ((t * 25 + i * 17) % (o.h * 0.8)); c.beginPath(); c.arc(o.x + o.w * (0.2 + i * 0.2), yy, 5, 0, TAU); c.fill(); } return; }
+  for (let i = 0; i < Math.ceil(o.w / 16); i++) {
+    const fx = o.x + 8 + i * 16, hgt = o.h * k * (0.6 + 0.4 * Math.abs(Math.sin(t * 7 + i * 1.7)));
+    c.fillStyle = 'rgba(255,107,107,.9)'; c.beginPath(); c.moveTo(fx - 10, o.y + o.h); c.quadraticCurveTo(fx - 12, o.y + o.h - hgt * 0.6, fx, o.y + o.h - hgt); c.quadraticCurveTo(fx + 12, o.y + o.h - hgt * 0.6, fx + 10, o.y + o.h); c.fill();
+    c.fillStyle = 'rgba(255,212,59,.95)'; c.beginPath(); c.moveTo(fx - 6, o.y + o.h); c.quadraticCurveTo(fx - 6, o.y + o.h - hgt * 0.4, fx, o.y + o.h - hgt * 0.65); c.quadraticCurveTo(fx + 6, o.y + o.h - hgt * 0.4, fx + 6, o.y + o.h); c.fill();
+  }
+  if (o.spray && o.out > 0.02) { c.fillStyle = 'rgba(77,171,247,.8)'; for (let i = 0; i < 12; i++) { const px = o.x + ((i * 37 + t * 90) % o.w), py = o.y + ((i * 53 + t * 260) % o.h); c.beginPath(); c.arc(px, py, 2.4, 0, TAU); c.fill(); } }
+}
+function drawMirror(c, o, W) {
+  if (o.opt && !YC.mirrorOn(W, o)) { c.strokeStyle = 'rgba(134,142,150,.5)'; c.setLineDash([4, 4]); c.lineWidth = 2; c.strokeRect(o.x + 4, o.y + 4, 24, 24); c.setLineDash([]); return; }
+  const f = YC.mirrorFlip(W, o), cx = o.x + 16, cy = o.y + 16;
+  c.save(); c.translate(cx, cy); c.rotate(f === 0 ? -Math.PI / 4 : Math.PI / 4);
+  box(c, -20, -4, 40, 8, 3, '#e7f5ff', INK, 2); c.fillStyle = '#a5d8ff'; c.fillRect(-16, -2, 32, 3);
+  c.restore();
+  c.fillStyle = INK; c.beginPath(); c.arc(cx, cy, 3, 0, TAU); c.fill();
+}
+function drawSensor(c, o, t) {
+  const cx = o.x + 16, cy = o.y + 16;
+  if (o.on || o.lit) { c.fillStyle = o.on ? 'rgba(105,219,124,.45)' : 'rgba(255,236,153,.5)'; c.beginPath(); c.arc(cx, cy, 22 + Math.sin(t * 8) * 2, 0, TAU); c.fill(); }
+  box(c, o.x + 4, o.y + 4, 24, 24, 6, o.on ? '#69db7c' : o.lit ? '#ffe066' : '#868e96', INK, 2);
+  c.fillStyle = '#fff'; c.beginPath(); c.arc(cx, cy, 5, 0, TAU); c.fill(); c.fillStyle = INK; c.beginPath(); c.arc(cx, cy, 2.4, 0, TAU); c.fill();
+}
+function drawSource(c, o) {
+  box(c, o.x + 2, o.y + 4, 28, 24, 5, '#495057', INK, 2);
+  c.fillStyle = '#ffe066'; const d = o.dir | 0; c.beginPath(); c.arc(o.x + 16 + [12, 0, -12, 0][d], o.y + 16 + [0, 10, 0, -10][d], 6, 0, TAU); c.fill(); c.stroke();
+}
+function drawLift(c, o, W, t) {
+  if (o.style === 'balloon') {
+    const cx = o.x + o.w / 2, top = o.y - 150, hot = YC.linkOn(W, o) || (o.solo && W.n <= 1 && o.t > 0 && o.t < 1);
+    c.strokeStyle = '#8d6e63'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(o.x + 8, o.y); c.lineTo(cx - 34, top + 112); c.moveTo(o.x + o.w - 8, o.y); c.lineTo(cx + 34, top + 112); c.stroke();
+    c.fillStyle = '#ff6b6b'; c.strokeStyle = INK; c.lineWidth = 2.5; c.beginPath(); c.moveTo(cx - 34, top + 112); c.bezierCurveTo(cx - 80, top + 70, cx - 70, top, cx, top); c.bezierCurveTo(cx + 70, top, cx + 80, top + 70, cx + 34, top + 112); c.closePath(); c.fill(); c.stroke();
+    c.fillStyle = '#ffd43b'; c.beginPath(); c.moveTo(cx - 14, top + 4); c.bezierCurveTo(cx - 30, top + 50, cx - 24, top + 90, cx - 12, top + 112); c.lineTo(cx + 12, top + 112); c.bezierCurveTo(cx + 24, top + 90, cx + 30, top + 50, cx + 14, top + 4); c.closePath(); c.fill(); c.stroke();
+    if (hot) { const f = 10 + Math.sin(t * 25) * 3; c.fillStyle = '#ff922b'; c.beginPath(); c.moveTo(cx, top + 112 - f * 2.2); c.quadraticCurveTo(cx + 9, top + 116, cx, top + 124); c.quadraticCurveTo(cx - 9, top + 116, cx, top + 112 - f * 2.2); c.fill(); }
+    box(c, o.x, o.y, o.w, o.h, 4, '#c08552', INK, 2.5);
+    return;
+  }
   box(c, o.x, o.y, o.w, o.h, 4, '#adb5bd', INK, 2.5);
   c.fillStyle = '#868e96'; for (let x = o.x + 8; x < o.x + o.w - 8; x += 14) { c.beginPath(); c.moveTo(x, o.y + o.h - 4); c.lineTo(x + 4, o.y + 4); c.lineTo(x + 8, o.y + o.h - 4); c.closePath(); c.fill(); }
 }
@@ -267,8 +356,12 @@ Renderer.prototype.draw = function (v) {
   if (W.n <= 1) for (let yy = 0; yy < W.rows; yy++) for (let xx = 0; xx < W.cols; xx++) if (W.ch(xx, yy) === 's') { box(c, xx * T + 1, yy * T + 1, T - 2, T - 2, 6, '#d0ebff', '#4dabf7', 2.5); label(c, '혼자', xx * T + 16, yy * T + 16, 10, '#1c7ed6', null); }
   const n = W.n, O = W.objs;
   for (const o of O) if (o.type === 'exit') drawExit(c, o, t); else if (o.type === 'flag') drawFlag(c, o, v.ck >= o.idx); else if (o.type === 'sign') drawSign(c, o, n);
-  for (const o of O) if (o.type === 'lift') drawLift(c, o); else if (o.type === 'door') drawDoor(c, o); else if (o.type === 'btn') drawBtn(c, o, n); else if (o.type === 'pad') drawPad(c, o, n); else if (o.type === 'saw') drawSaw(c, o); else if (o.type === 'raft') { o._n = n; drawRaft(c, o); }
+    else if (o.type === 'wire') drawWire(c, o, W, t); else if (o.type === 'cell') drawCell(c, o); else if (o.type === 'bulb') drawBulb(c, o, W, t);
+    else if (o.type === 'mirror') drawMirror(c, o, W); else if (o.type === 'sensor') drawSensor(c, o, t); else if (o.type === 'beam') drawSource(c, o);
+  for (const o of O) if (o.type === 'lift') drawLift(c, o, W, t); else if (o.type === 'door') drawDoor(c, o, t); else if (o.type === 'btn') drawBtn(c, o, n, t); else if (o.type === 'pad') drawPad(c, o, n); else if (o.type === 'saw') drawSaw(c, o); else if (o.type === 'raft') { o._n = n; drawRaft(c, o); }
   for (const o of O) if (o.type === 'box') drawBox(c, o, n);
+  for (const o of W.fires) drawFire(c, o, t);
+  for (const src of W.beams) { const r = YC.traceBeam(W, src); c.lineCap = 'round'; c.lineJoin = 'round'; for (const [lw, col] of [[10, 'rgba(255,236,153,.35)'], [4, 'rgba(255,212,59,.95)'], [1.5, '#fff']]) { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); r.pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke(); } }
   // 사람
   const P = v.people;
   for (let pass = 0; pass < 2; pass++) for (const p of P) {
@@ -277,6 +370,7 @@ Renderer.prototype.draw = function (v) {
     guy(c, p, v.cols ? v.cols[p.slot] : p.slot, t, { strain: strain });
   }
   for (const o of O) if (o.type === 'key') drawKey(c, o, t);
+  if (v.hint) drawHint(c, v.hint, P.find(p => p.slot === v.me), t, cx, vw);
   // 물 (사람 위에 덮어 그려 잠긴 것처럼)
   for (const o of W.waters) {
     c.fillStyle = 'rgba(64,160,255,.5)'; c.fillRect(o.x, o.y + 3, o.w, o.h - 3);

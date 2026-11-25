@@ -64,7 +64,7 @@ function initObj(o) {
   switch (o.type) {
     case 'box': o.hx = o.x; o.hy = o.y; o.vx = 0; o.vy = 0; o.gr = 1; o.sup = 0; o.rs = 0; o.fr = 0; o.fl = 0; o.nd = 1; o.ice = 0; o.wt = o.wt || 1; break;
     case 'btn': o.on = 0; o.lat = 0; o.load = 0; o.hold = 0; break;
-    case 'door': o.open = 0; break;
+    case 'door': o.open = o.inv ? 1 : 0; break;                  // 거꾸로 이은 문(다리)은 처음에 없는 상태
     case 'lift':
       o.x1 = o.x; o.y1 = o.y; if (o.x2 === undefined) o.x2 = o.x; if (o.y2 === undefined) o.y2 = o.y;
       o.len = Math.hypot(o.x2 - o.x1, o.y2 - o.y1) || 1; o.t = 0; o.dirn = 1; o.wait = o.pause || 0; o.speed = o.speed || 70; o.mdx = 0; o.mdy = 0; break;
@@ -73,6 +73,9 @@ function initObj(o) {
     case 'raft': o.x1 = o.x; o.st = 0; o.tmr = 0; o.load = 0; o.sink = 0; o.lw = 0; o.h = o.h || 16; o.y = o.wy - o.rise; o.speed = o.speed || 64; o.mdx = 0; o.mdy = 0; break;
     case 'key': o.hx = o.x; o.hy = o.y; o.hd = -1; o.used = 0; break;
     case 'exit': o.open = o.locked ? 0 : 1; break;
+    case 'fire': o.out = 0; break;
+    case 'sensor': o.on = 0; o.lit = 0; o.hold = 0; break;
+    case 'relay': o.on = 0; o.hold = 0; break;
   }
 }
 
@@ -91,12 +94,16 @@ function World(def) {
   this.def = def; this.cols = def.w; this.rows = def.h; this.w = def.w * T; this.h = def.h * T; this.g = def.g; this.n = 1;
   this.objs = []; this.byId = {}; this.solids = []; this.ev = [];
   this.btns = []; this.saws = []; this.waters = []; this.flags = []; this.boxes = []; this.doors = []; this.kickers = []; this.key = null; this.exit = null;
+  this.fires = []; this.sensors = []; this.beams = []; this.relays = []; this.mirrorAt = {}; this.sensorAt = {};
   for (let i = 0; i < def.objs.length; i++) {
     const o = Object.assign({}, def.objs[i]); o.id = i + 1; initObj(o);
     this.objs.push(o); this.byId[o.id] = o;
     if (o.type === 'btn') this.btns.push(o); else if (o.type === 'saw') { this.saws.push(o); this.kickers.push(o); }
     else if (o.type === 'pad') this.kickers.push(o); else if (o.type === 'water') this.waters.push(o); else if (o.type === 'flag') this.flags.push(o);
     else if (o.type === 'box') this.boxes.push(o); else if (o.type === 'door') this.doors.push(o); else if (o.type === 'key') this.key = o; else if (o.type === 'exit') this.exit = o;
+    else if (o.type === 'fire') this.fires.push(o); else if (o.type === 'beam') this.beams.push(o); else if (o.type === 'relay') this.relays.push(o);
+    else if (o.type === 'sensor') { this.sensors.push(o); this.sensorAt[floor(o.y / T) * def.w + floor(o.x / T)] = o; }
+    else if (o.type === 'mirror') this.mirrorAt[floor(o.y / T) * def.w + floor(o.x / T)] = o;
   }
   this.snap = null;                             // 소리·효과용: 지난 틱의 모습
 }
@@ -139,6 +146,9 @@ function packObj(o) {
     case 'raft': return [r1(o.x), r1(o.y), o.st, o.load, r2(o.tmr), r1(o.sink)];
     case 'key': return [o.hd, r1(o.x), r1(o.y), o.used];
     case 'exit': return [o.open];
+    case 'fire': return [r2(o.out)];
+    case 'sensor': return [o.on | (o.lit << 1)];
+    case 'relay': return [o.on, r1(o.hold)];
   }
   return 0;
 }
@@ -160,6 +170,9 @@ function applyObj(o, a, b, k) {
       o.st = a[2]; o.load = a[3]; o.tmr = a[4]; o.sink = a[5]; break;
     case 'key': o.hd = a[0]; o.x = lerp(a[1], b[1], k); o.y = lerp(a[2], b[2], k); o.used = a[3]; break;
     case 'exit': o.open = a[0]; break;
+    case 'fire': o.out = lerp(a[0], b[0], k); break;
+    case 'sensor': o.on = a[0] & 1; o.lit = (a[0] >> 1) & 1; break;
+    case 'relay': o.on = a[0]; o.hold = a[1]; break;
   }
 }
 World.prototype.pack = function () { const out = []; for (const o of this.objs) out.push(packObj(o)); return out; };
@@ -181,6 +194,8 @@ World.prototype.observe = function () {
       case 'raft': if (!first && p.st !== o.st) { if (o.st === 4) ev.push(['sink', o.id]); else if (o.st === 1) ev.push(['sail', o.id]); } p.st = o.st; break;
       case 'key': if (!first && p.hd !== o.hd) ev.push(['key', o.hd]); p.hd = o.hd; break;
       case 'exit': if (!first && p.open !== o.open) ev.push(['unlock', o.id]); p.open = o.open; break;
+      case 'fire': if (!first && (p.out < 0.5) !== (o.out < 0.5)) ev.push([o.out >= 0.5 ? 'fout' : 'fon', o.id]); p.out = o.out; break;
+      case 'sensor': if (!first && p.on !== o.on && o.on) ev.push(['lit', o.id]); p.on = o.on; break;
     }
   }
 };
@@ -435,6 +450,7 @@ function stepPlayer(P, inp, W, GS, dt, env) {
     const x0 = floor(P.x / T), x1 = floor((P.x + PW - 0.01) / T), y0 = floor(P.y / T), y1 = floor((P.y + PH - 0.01) / T);
     for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) if (W.ch(tx, ty) === '^' && P.y + PH > ty * T + 14 && P.x + PW > tx * T + 5 && P.x < tx * T + 27) { die(P, 'spike'); return; }
     for (const z of W.waters) if (P.x + PW > z.x && P.x < z.x + z.w && P.y + PH > z.y + 15 && P.y < z.y + z.h) { die(P, 'water'); return; }
+    for (const f of W.fires) if (f.out < 0.55 && P.x + PW > f.x + 6 && P.x < f.x + f.w - 6 && P.y + PH > f.y + 8 && P.y < f.y + f.h) { die(P, 'fire'); return; }
     for (const f of W.flags) if (f.idx > P.ck && P.x + PW > f.x - 6 && P.x < f.x + 26 && P.y + PH > f.y - 70 && P.y < f.y + 2) { P.ck = f.idx; ev.push(['flag', f.idx]); }
     const k = W.key; P.want = false; P.ul = false;
     if (k && !k.used && k.hd < 0 && P.x + PW > k.x - 4 && P.x < k.x + 26 && P.y + PH > k.y - 4 && P.y < k.y + 30) P.want = true;
@@ -508,10 +524,28 @@ function makeTotals(R) {                       // 머리 위에 올라탄 사람
 }
 function ridersOn(R, slot) { let c = 0; const tw = makeTotals(R); for (let j = 0; j < R.length; j++) { const q = R[j]; if (j !== slot && q && q.on && q.gRef === -(slot + 1)) c += tw(j); } return c; }
 
+/* 빛: 광원에서 칸 단위로 나아가다 거울에서 꺾이고, 벽·닫힌 문에서 멈춘다. 감지기에 닿으면 hit */
+const BDX = [1, 0, -1, 0], BDY = [0, 1, 0, -1];
+function mirrorFlip(W, m) { return m.opt ? (m.d || 0) : ((m.d || 0) ^ (linkOn(W, m) ? 1 : 0)) & 1; }   // 0: '/'  1: '\'  (opt: 연결이 켜질 때만 나타나는 거울)
+function mirrorOn(W, m) { return !m.opt || linkOn(W, m); }
+function traceBeam(W, src) {
+  let cx = floor(src.x / T), cy = floor(src.y / T), dir = src.dir | 0; const pts = [[cx * T + 16, cy * T + 16]]; let hit = null;
+  for (let step = 0; step < 400; step++) {
+    const nx = cx + BDX[dir], ny = cy + BDY[dir];
+    let block = nx < 0 || ny < 0 || nx >= W.cols || ny >= W.rows || W.solid(nx, ny);
+    if (!block) for (const d of W.doors) { const r = rectOf(d); if (r && nx * T + 16 > r.x && nx * T + 16 < r.x + r.w && ny * T + 16 > r.y && ny * T + 16 < r.y + r.h) { block = true; break; } }
+    if (block) { pts.push([cx * T + 16 + BDX[dir] * 16, cy * T + 16 + BDY[dir] * 16]); break; }
+    cx = nx; cy = ny;
+    const key = cy * W.cols + cx, m = W.mirrorAt[key], z = W.sensorAt[key];
+    if (m && mirrorOn(W, m)) { pts.push([cx * T + 16, cy * T + 16]); dir = mirrorFlip(W, m) === 0 ? [3, 2, 1, 0][dir] : [1, 0, 3, 2][dir]; continue; }
+    if (z) { pts.push([cx * T + 16, cy * T + 16]); hit = z; break; }
+  }
+  return { pts: pts, hit: hit };
+}
 function linkOn(W, o) {
   const L = o.link; if (!L || !L.length) return false;
   let any = false, all = true;
-  for (let i = 0; i < L.length; i++) { const s = W.byId[L[i]]; let v = false; if (s) { if (s.type === 'btn') v = !!s.on; else if (s.type === 'pad') v = !!s.ok; else if (s.type === 'exit') v = !!s.open; } any = any || v; all = all && v; }
+  for (let i = 0; i < L.length; i++) { const s = W.byId[L[i]]; let v = false; if (s) { if (s.type === 'btn') v = !!s.on; else if (s.type === 'pad') v = !!s.ok; else if (s.type === 'exit') v = !!s.open; else if (s.type === 'sensor' || s.type === 'relay') v = !!s.on; } any = any || v; all = all && v; }
   const r = o.mode === 'all' ? all : any;
   return o.inv ? !r : r;
 }
@@ -532,7 +566,7 @@ function simWorld(W, R, dt) {
   for (const o of W.objs) {
     if (o.type === 'lift') {
       const ox = o.x, oy = o.y;
-      if (o.link) o.t = approach(o.t, linkOn(W, o) ? 1 : 0, o.speed * dt / o.len);
+      if (o.link) o.t = approach(o.t, (o.solo && n <= 1 ? (ld[o.id] || 0) > 0 : linkOn(W, o)) ? 1 : 0, o.speed * dt / o.len);
       else if (o.wait > 0) o.wait -= dt;
       else { o.t += o.dirn * o.speed * dt / o.len; if (o.t >= 1) { o.t = 1; o.dirn = -1; o.wait = o.pause || 1; } else if (o.t <= 0) { o.t = 0; o.dirn = 1; o.wait = o.pause || 1; } }
       o.x = lerp(o.x1, o.x2, o.t); o.y = lerp(o.y1, o.y2, o.t); o.mdx = o.x - ox; o.mdy = o.y - oy;
@@ -579,14 +613,20 @@ function simWorld(W, R, dt) {
   for (const b of W.boxes) simBox(W, b, dt, push[b.id], pl[b.id] || 0);
 
   for (const b of W.btns) {
+    if (b.minN && n < b.minN) { b.on = 1; b.load = 0; continue; }                     // 팀 인원이 적으면 이 단추는 필요 없다 (늘 켜진 것으로)
     let w = b.boxOnly ? 0 : (pl[b.id] || 0);
     for (const x of W.boxes) if (!(x.rs > 0) && x.gr && abs(x.y + x.h - b.y) < 3 && x.x < b.x + b.w - 6 && x.x + x.w > b.x + 6) w += x.wt + (b.boxOnly ? 0 : (pl[x.id] || 0));
     const on = w >= needOf(b.need, n);
     if (b.latchT) { b.hold = on ? b.hold + dt : 0; if (b.hold >= b.latchT) b.lat = 1; }   // 한동안 눌린 채로 있으면 딸깍 고정
-    else if (b.latch && on) b.lat = 1;
+    else if ((b.latch || (b.soloLatch && n <= 1)) && on) b.lat = 1;
     b.on = on || b.lat ? 1 : 0; b.load = min(15, w);
   }
-  for (const d of W.doors) d.open = approach(d.open, linkOn(W, d) ? 1 : 0, dt * (d.fast ? 4 : 2.2));
+  for (const z of W.relays) { z.hold = linkOn(W, z) ? z.hold + dt : 0; if (z.hold >= (z.latchT || 1)) z.on = 1; }
+  for (const z of W.sensors) z.lit = 0;
+  for (const src of W.beams) { const r = traceBeam(W, src); if (r.hit) r.hit.lit = 1; }
+  for (const z of W.sensors) { z.hold = z.lit ? z.hold + dt : 0; if (z.hold >= (z.latchT || 0.6)) z.on = 1; }   // 빛이 잠깐 머물면 딸깍 켜진 채로
+  for (const d of W.doors) d.open = approach(d.open, linkOn(W, d) ? 1 : 0, dt * (d.rate || (d.fast ? 4 : 2.2)));
+  for (const f of W.fires) f.out = approach(f.out, linkOn(W, f) || (f.stay && f.out >= 1) ? 1 : 0, dt * 1.6);   // 불: 연결된 조건이 맞으면 꺼진다 (stay: 한 번 꺼지면 그대로)
 
   for (const o of W.saws) {
     if (o.solo && n <= 1) { o.th = approach(o.th, 0, dt * 2); o.om = 0; o.pend.length = 0; continue; }   // 혼자 연습: 판을 수평으로 묶어 둔다
@@ -629,7 +669,11 @@ function simBox(W, b, dt, pu, riders) {
   b.fr = min(7, pr); b.fl = min(7, pL);
   if (b.sup) { const s = W.byId[b.sup]; if (s) { b.x += s.mdx || 0; b.y += s.mdy || 0; } }
   let mat = '#';
-  if (b.gr && !b.sup) { const c = W.ch(floor((b.x + b.w / 2) / T), floor((b.y + b.h + 1) / T)); if (c === 'I' || c === 'S') mat = c; }
+  if (b.gr && !b.sup) {
+    const ty = floor((b.y + b.h + 1) / T); let c = W.ch(floor((b.x + b.w / 2) / T), ty);
+    if (c !== 'I' && c !== 'S' && c !== '#') { const l = W.ch(floor((b.x + 1) / T), ty), r = W.ch(floor((b.x + b.w - 1) / T), ty); c = l === 'I' || r === 'I' ? 'I' : l === 'S' || r === 'S' ? 'S' : c; }   // 가운데가 구덩이 위면 받치고 있는 쪽 바닥으로
+    if (c === 'I' || c === 'S') mat = c;
+  }
   b.ice = mat === 'I' ? 1 : 0;
   let need = mat === 'I' ? 1 : mat === 'S' ? max(needOf(b.need, n), needOf(b.needS || 'all', n)) : needOf(b.need, n);
   if (mat !== 'I') need += riders;                                                       // 위에 올라타면 그만큼 무거워진다
@@ -971,6 +1015,6 @@ Viewer.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH
 Viewer.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
 
 const YC = { T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
-  opt, clamp, lerp, approach, needOf, launchNeed, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
+  opt, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
 if (typeof module !== 'undefined' && module.exports) module.exports = YC; else root.YC = YC;
 })(typeof window !== 'undefined' ? window : globalThis);

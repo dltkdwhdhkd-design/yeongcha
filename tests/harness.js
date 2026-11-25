@@ -2,7 +2,7 @@
 'use strict';
 const YC = require('../js/core.js');
 require('../js/levels.js');
-const Bot = require('./bot.js');
+const Bot = require('../js/bot.js');
 
 function rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 

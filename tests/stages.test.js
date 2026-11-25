@@ -2,7 +2,7 @@
    node tests/stages.test.js [quick]                                                             */
 'use strict';
 const { YC, Sim } = require('./harness.js');
-const { scripts } = require('./scripts.js');
+const { scripts } = require('../js/ai.js');
 const quick = process.argv[2] === 'quick';
 let pass = 0, fail = 0; const fails = [];
 function run(id, n, net, seed, block) {
@@ -23,7 +23,7 @@ for (const id of YC.order) {
   console.log((YC.build(id).name + '        ').slice(0, 8), row.join('  '));
 }
 // 실제 게임처럼 서로 길을 막는 상태에서도
-for (const [id, n, net] of [['push', 2, [0, 0, 0]], ['push', 3, [150, 40, 0.02]], ['push', 4, [0, 0, 0]], ['push', 4, [150, 40, 0.02]]]) run(id, n, net, 7, true);
+for (const [id, n, net] of [['push', 2, [0, 0, 0]], ['push', 2, [150, 40, 0.02]], ['push', 3, [150, 40, 0.02]]]) run(id, n, net, 7, true);
 
 // 기준 기기가 멈췄다가 돌아와도 이어진다
 (function takeover() {

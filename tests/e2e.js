@@ -28,7 +28,7 @@ async function shot(page, name) { if (SHOTS) await page.screenshot({ path: path.
   const browser = await chromium.launch({ args: ['--no-sandbox', '--disable-features=WebRtcHideLocalIpsWithMdns', '--allow-loopback-in-peer-connection', '--autoplay-policy=no-user-gesture-required'] });
   const errors = [];
   const watch = (page, who) => { page.on('pageerror', e => { errors.push(who + ': ' + e.message); console.log('  [오류] ' + who + ': ' + e.message + ' ' + (e.stack || '').split('\n').slice(1, 3).join(' ')); }); page.on('dialog', d => d.accept()); };
-  const src = 'window.__ycSrc = ' + JSON.stringify({ bot: fs.readFileSync(ROOT + 'tests/bot.js', 'utf8'), scripts: fs.readFileSync(ROOT + 'tests/scripts.js', 'utf8') }) + ';\n' + fs.readFileSync(ROOT + 'tests/webbot.js', 'utf8');
+  const src = 'window.__ycSrc = ' + JSON.stringify({ bot: fs.readFileSync(ROOT + 'js/bot.js', 'utf8'), scripts: fs.readFileSync(ROOT + 'js/ai.js', 'utf8') }) + ';\n' + fs.readFileSync(ROOT + 'tests/webbot.js', 'utf8');
 
   // 선생님
   const host = await (await browser.newContext({ viewport: { width: 1366, height: 768 } })).newPage(); watch(host, '선생님');

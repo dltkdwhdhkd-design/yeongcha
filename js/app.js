@@ -48,7 +48,7 @@ function toast(s) { const t = $('h-toast'); t.textContent = s; t.hidden = false;
 /* o: { slot, slots, stages, team, names, solo, first, send(type, payload), onQuit } */
 function startGame(o) {
   stopGame();
-  G.solo = !!o.solo; G.names = o.names || {}; G.send = o.send || null; G.myTeam = o.team | 0; G.onQuit = o.onQuit || null;
+  G.solo = !!o.solo; G.names = o.names || {}; G.send = o.send || null; G.myTeam = o.team | 0; G.onQuit = o.onQuit || null; G.practice = o.practice || null; G.errShown = '';
   G.team = new YC.Team({ slot: o.slot, slots: o.slots, stages: o.stages, build: YC.build, team: o.team | 0, spect: !o.solo, late: !!o.late, seq0: Math.floor(Date.now() / 50) % 100000000 });
   if (o.solo) G.team.cd0 = 1.4;
   if (o.restore) G.team.restore(o.restore, performance.now());
@@ -56,11 +56,12 @@ function startGame(o) {
   G.team.start(performance.now(), !!o.first);
   show('s-play'); fitCanvas();
   G.on = true; G.last = performance.now(); G.acc = 0; G.pj = 0; G.okey = ''; G.voteUntil = 0; G.stageSeen = -1; G.rttT = 0; G.keys = {}; G.touch = {}; G.matesKey = ''; G.R.cam.set = false; G.R.fx.length = 0;
-  $('b-quit').hidden = !o.solo; $('h-rank').hidden = true; $('b-vote').hidden = false; $('h-mates').hidden = !!o.solo;
+  $('b-quit').hidden = !o.solo; $('h-rank').hidden = true; $('b-vote').hidden = false; $('h-mates').hidden = !!o.solo && !o.practice;
   $('touch').hidden = !(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
   requestAnimationFrame(frame);
+  return G;
 }
-function stopGame() { G.on = false; G.team = null; $('h-over').hidden = true; $('h-hint').hidden = true; $('h-vote').hidden = true; $('h-toast').hidden = true; }
+function stopGame() { if (G.practice) { G.practice.stop(); G.practice = null; } G.on = false; G.team = null; $('h-over').hidden = true; $('h-hint').hidden = true; $('h-vote').hidden = true; $('h-toast').hidden = true; }
 
 function frame() {
   if (!G.on) return;
@@ -77,6 +78,7 @@ function tick(now) {
   const T = G.team, k = G.keys, t = G.touch, inp = G.inp, j = k.j || t.j ? 1 : 0;
   inp.l = k.l || t.l ? 1 : 0; inp.r = k.r || t.r ? 1 : 0; inp.j = j; inp.jp = j && !G.pj ? 1 : 0; inp.en = k.en || t.en ? 1 : 0; G.pj = j;
   if (G.bot) G.bot(inp);                                                                    // 시험용: 봇이 대신 누른다
+  if (G.practice) G.practice.step(now);                                                     // 혼자 연습: AI 친구들의 게임을 같이 돌린다
   T.me.vote = now < G.voteUntil ? 1 : 0;
   if (!G.solo && now - G.rttT > 1000) {                                                     // 통신 길에 맞춰 보내는 빠르기를 정한다
     G.rttT = now; const st = Net.status(), dir = st.want > 0 && st.direct >= st.want;
@@ -126,7 +128,7 @@ function onEvent(e, now, T) {
 }
 function draw(now) {
   const T = G.team, me = T.me;
-  G.R.draw({ W: T.W, people: T.people(), me: T.slot, names: G.names, ck: me.ck, t: now / 1000, focus: me.fin ? null : { x: me.x + 12 + (me.dead > 0 ? 0 : me.face * 26), y: me.y + 14 } });
+  G.R.draw({ W: T.W, people: T.people(), me: T.slot, names: G.names, ck: me.ck, t: now / 1000, focus: me.fin ? null : { x: me.x + 12 + (me.dead > 0 ? 0 : me.face * 26), y: me.y + 14 }, hint: G.practice && T.TS.ph === YC.PH_PLAY && !me.fin && !(me.dead > 0) ? G.practice.hint() : null });
   if (now - G.hudT > 90) { G.hudT = now; hud(now); }
 }
 function hud(now) {
@@ -135,6 +137,7 @@ function hud(now) {
   $('h-time').textContent = fmt(TS.ph === YC.PH_DONE ? T.total(now) : T.time(now));
   $('h-total').textContent = T.stages.length > 1 && TS.ph !== YC.PH_DONE ? '합계 ' + fmt(T.total(now)) : '';
   if (G.toastT && now > G.toastT) { $('h-toast').hidden = true; G.toastT = 0; }
+  if (G.practice && G.practice.err && G.errShown !== G.practice.err) { G.errShown = G.practice.err; toast('AI 친구가 헷갈렸어요. ↺(R)을 누르면 처음부터 다시 해요'); G.toastT = now + 6000; }
   // 팀원
   const key = T.slots.join(',') + '|' + T.slots.map(s => s === T.slot ? 1 : (T.ghosts[s].present ? (T.ghosts[s].rep && T.ghosts[s].rep.fin && T.ghosts[s].rep.sr === T.sr() ? 2 : 1) : 0)).join('') + (me.fin ? 'f' : '');
   if (key !== G.matesKey) {
@@ -184,10 +187,16 @@ function rankHtml(rk, mine, total) {
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
 /* ═══════════════════ 혼자 연습 ═══════════════════ */
-function soloStart(stages) { A.play('ui'); startGame({ slot: 0, slots: [0], stages: stages, solo: true, first: true, names: { 0: '나' }, onQuit: () => { stopGame(); show('s-solo'); } }); }
+function soloStart(stages) {
+  A.play('ui'); const nAI = +store.get('yc-ai', '3'), quit = () => { stopGame(); show('s-solo'); };
+  if (nAI > 0 && window.YCPractice) window.YCPractice.start({ stages: stages, nAI: nAI, onQuit: quit, startGame: o => startGame(Object.assign({ solo: true }, o)) });
+  else startGame({ slot: 0, slots: [0], stages: stages, solo: true, first: true, names: { 0: '나' }, onQuit: quit });
+}
 (function () {
   const box = $('solo-list');
-  YC.order.forEach((id, i) => { const d = YC.build(id), b = el('button', 'stg'); b.append(el('b', null, (i + 1) + '. ' + d.name), el('small', null, d.sci)); b.onclick = () => soloStart([id]); box.append(b); });
+  YC.order.forEach((id, i) => { const d = YC.build(id), b = el('button', 'stg'); b.append(el('b', null, (i + 1) + '. ' + d.name), el('small', null, d.sci)); b.onclick = () => soloStart(YC.order.slice(i)); box.append(b); });
+  const ai = $('solo-ai'), paint = () => { ai.textContent = ''; for (let k = 0; k <= 5; k++) { const c = el('button', 'chk' + (+store.get('yc-ai', '3') === k ? ' on' : ''), k ? k + '명' : '없이'); c.onclick = () => { store.set('yc-ai', String(k)); A.play('ui'); paint(); }; ai.append(c); } };
+  paint();
   $('b-solo').onclick = () => { A.play('ui'); show('s-solo'); };
   $('b-solo-all').onclick = () => soloStart(YC.order.slice());
 })();

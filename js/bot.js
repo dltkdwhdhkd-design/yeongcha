@@ -1,4 +1,6 @@
-/* 시험용 봇: 대본(제너레이터)대로 키를 누른다. 노드 시험(harness.js)과 브라우저 시험(webbot.js)이 함께 쓴다. */
+/* 영차영차 — bot.js : AI 친구(봇). 대본(제너레이터)대로 키를 누른다.
+   혼자 연습의 AI 친구, 노드 시험(tests/harness.js), 브라우저 시험(tests/webbot.js)이 함께 쓴다. */
+(function (root) {
 'use strict';
 function Bot(sim, i) { this.sim = sim; this.i = i; this.T = sim.teams[i]; this.me = this.T.me; this.inp = { l: 0, r: 0, j: 0, jp: 0, en: 0 }; this.pj = 0; this.gen = null; this.done = false; this.err = null; this.off = false; this.noHop = false; }
 Bot.prototype.play = function (fn) { this.gen = fn(this); this.done = false; this.err = null; };
@@ -15,7 +17,7 @@ Bot.prototype.W = function () { return this.T.W; };
 Bot.prototype.obj = function (type, k) { let c = 0; for (const o of this.T.W.objs) if (o.type === type && c++ === (k || 0)) return o; return null; };
 Bot.prototype.stop = function () { this.inp.l = this.inp.r = 0; };
 Bot.prototype.wait = function* (sec) { for (let i = 0; i < sec * 60; i++) yield; };
-Bot.prototype.until = function* (fn, timeout, what) { let t = 0; while (!fn()) { yield; if ((t += 1 / 60) > (timeout || 20)) throw new Error('기다리다 시간 초과: ' + (what || fn.toString().slice(0, 80)) + ' (봇 ' + this.i + ', x=' + Math.round(this.cx()) + ')'); } };
+Bot.prototype.until = function* (fn, timeout, what) { let t = 0; while (!fn()) { yield; if ((t += 1 / 60) > (timeout || 20) * (this.sim.tmul || 1)) throw new Error('기다리다 시간 초과: ' + (what || fn.toString().slice(0, 80)) + ' (봇 ' + this.i + ', x=' + Math.round(this.cx()) + ')'); } };
 /* 걸어서 x(몸 가운데)까지. 가까워지면 톡톡 끊어 누르고, 막히면 뛰어넘는다. 멈춰 선 뒤에도 벗어나 있으면 다시 맞춘다 */
 Bot.prototype.walkTo = function* (x, tol, timeout) {
   tol = tol || 2; let t = 0, k = 0, stuck = 0, lx = this.cx(), hop = -8, crowd = 0;
@@ -30,7 +32,7 @@ Bot.prototype.walkTo = function* (x, tol, timeout) {
       if (stuck > 12 && hop <= -8 && !this.noHop) { hop = 16; stuck = 0; }                   // 막히면 뛰어넘는다 (noHop이면 기다린다)
       this.inp.j = hop > 0 ? 1 : 0; hop--;
       yield;
-      if ((t += 1 / 60) > (timeout || 12)) { this.stop(); this.inp.j = 0; throw new Error('걷다 시간 초과: 목표 ' + x + ', 지금 ' + Math.round(this.cx()) + ' (봇 ' + this.i + ')'); }
+      if ((t += 1 / 60) > (timeout || 12) * (this.sim.tmul || 1)) { this.stop(); this.inp.j = 0; throw new Error('걷다 시간 초과: 목표 ' + x + ', 지금 ' + Math.round(this.cx()) + ' (봇 ' + this.i + ')'); }
     }
     this.stop(); this.inp.j = 0;
     for (let i = 0; i < 40 && (Math.abs(this.me.vx) > 4 || !this.me.gr); i++) yield;
@@ -40,7 +42,7 @@ Bot.prototype.walkTo = function* (x, tol, timeout) {
 /* dir 쪽을 누른 채 조건이 참이 될 때까지 */
 Bot.prototype.hold = function* (dir, fn, timeout, what) {
   let t = 0;
-  while (!fn()) { this.inp.r = dir > 0 ? 1 : 0; this.inp.l = dir < 0 ? 1 : 0; yield; if ((t += 1 / 60) > (timeout || 20)) { this.stop(); throw new Error('누르다 시간 초과: ' + (what || '') + ' (봇 ' + this.i + ', x=' + Math.round(this.cx()) + ')'); } }
+  while (!fn()) { this.inp.r = dir > 0 ? 1 : 0; this.inp.l = dir < 0 ? 1 : 0; yield; if ((t += 1 / 60) > (timeout || 20) * (this.sim.tmul || 1)) { this.stop(); throw new Error('누르다 시간 초과: ' + (what || '') + ' (봇 ' + this.i + ', x=' + Math.round(this.cx()) + ')'); } }
   this.stop();
 };
 /* 점프: x를 주면 그쪽으로 몸을 틀며 뛴다. 땅에 닿으면 끝 */
@@ -59,4 +61,5 @@ Bot.prototype.jump = function* (x, tol) {
 };
 Bot.prototype.enter = function* () { this.inp.en = 1; yield; yield; yield; this.inp.en = 0; };
 
-module.exports = Bot;
+if (typeof module !== 'undefined' && module.exports) module.exports = Bot; else root.YCBot = Bot;
+})(typeof window !== 'undefined' ? window : globalThis);
