@@ -264,8 +264,9 @@ function drawPad(c, o, n) {
   box(c, o.x - 2, o.fy - 5, o.w + 4, 5, 2, '#5c636b', INK, 1.5);
   box(c, o.x + shake, top, o.w, 11, 4, o.mode === 'scale' ? (o.ok ? '#40c057' : '#74c0fc') : '#ff922b', INK, 2.5);
   if (o.mode === 'scale' && o.minN && n < o.minN) { okMark(c, o.x + o.w / 2, o.y - 36); return; }   // 이 인원에서는 필요 없는 저울
-  if (o.mode !== 'scale' && n > 1) {                                                      // 발사대: 몇 명이 함께 눌렀다가 '동시에' 뛰어야 하나
-    const k = YC.launchNeed(n, 99, o.nsub); pipRow(c, o.x + o.w / 2 - 22, o.y - 44, k, 0, false, 9); label(c, '동시에!', o.x + o.w / 2 + (k - 1) * 6 + 18, o.y - 48, 12, INK, '#fff', 'left');
+  if (o.mode !== 'scale' && n > 1) {                                                      // 발사대: 태울 한 명을 뺀 나머지가 모두 '동시에' 뛰어야 한다 (판 위 사람이 많으면 칸도 는다, 초록 = 지금 판 위에서 뛸 사람)
+    const j = Math.max(0, (o.load | 0) - 1), k = Math.max(YC.launchNeed(n, 99, o.nsub), j);
+    pipRow(c, o.x + o.w / 2 - 22, o.y - 44, k, j, false, 9); label(c, '동시에!', o.x + o.w / 2 + (k - 1) * 6 + 18, o.y - 48, 12, INK, '#fff', 'left');
   }
   if (o.mode === 'scale') {                                                                // 저울: 필요한 무게만큼 사람 칸
     const want = o.want || YC.needOf(o.eq, n), s = 10, gap = 13, x0 = o.x + o.w / 2 - (want - 1) * gap / 2, y = o.y - 46;
