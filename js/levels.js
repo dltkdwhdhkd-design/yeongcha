@@ -2,7 +2,8 @@
    한 칸 = 32픽셀. 캐릭터는 24×28, 혼자 뛰면 2칸(64)까지, 친구 머리를 밟으면 3칸(96)까지 오른다.
    글자: # 땅, I 얼음, S 모래, ^ 가시, s 혼자 연습할 때만 생기는 디딤돌, d 팀이 둘 이하일 때만 생기는 디딤돌
    장치는 누르고 있는 동안만 작동한다. 누르는 사람이 남아 버리면, 건너간 사람이 저쪽에서 다른 수로 길을 열어 주어야 한다.
-   M: { hard } — 하드는 같은 스테이지에 장치(기믹)가 더 붙는다. 통신이 늦어도 할 수 있게, 시간을 더 짧게 조이지는 않는다
+   M: { hard, x } — hard: 장치(기믹)가 더 붙은 판 (지금은 노말·하드 모두). x: 하드에만 붙는 것 (색 단추, 불 꺼진 방).
+   통신이 늦어도 할 수 있게, 시간을 더 짧게 조이지는 않는다
    need·eq에 배열을 주면 팀 인원마다 다르다 (배열[인원], 끝을 넘으면 마지막 값)  */
 (function (root) {
 'use strict';
@@ -19,6 +20,8 @@ function Rnd(seed) {
     slots: (cands, k, d) => { if (!seed) return d; const a = cands.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a.slice(0, k).sort((x, y) => x - y); } };
 }
 const TWO3 = [1, 1, 1, 2];                       // 셋 이상이면 두 명 (둘 이하면 한 명)
+/* 하드의 색 단추: 팀에서 정해진 한 친구(색으로 보인다)만 누를 수 있다. 누구 차례인지는 판마다 다르다 */
+const own = (M, R, d) => M.x ? { only: R.i(0, 5, d) } : {};
 
 /* 높은 선반: 노말은 친구 머리 하나를 밟고(3칸), 하드는 셋이 탑을 쌓아야(4칸) 오른다.
    하드에서 팀이 둘뿐이면 d 디딤돌 위에서 받쳐 주고, 혼자면 s 디딤돌 두 개를 밟고 오른다. 선반이 있는 줄을 돌려준다 */
@@ -224,7 +227,7 @@ S.circuit = (R, M) => {
   const sc = H ? L.add({ type: 'btn', x: X(shx), y: X(GY), w: 48, need: 1, style: 'sw', tag: 'short' }) : null, nl = sc ? [sc] : undefined;
   const rs = L.add({ type: 'relay', link: ss, mode: 'all', mom: true });
   L.fill(37, 0, 38, 10);
-  const byp = L.add({ type: 'btn', x: X(40), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'byp' });
+  const byp = L.add(Object.assign({ type: 'btn', x: X(40), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'byp' }, own(M, R, 1)));
   L.add({ type: 'door', x: X(37) + 8, y: X(11), w: 48, h: 64, link: [rs, byp], nlink: nl, fast: true });
   L.add({ type: 'wire', pts: [[X(21) + 24, X(10)], [X(37), X(10)]], link: ss, mode: 'all', nlink: nl });
   L.add({ type: 'bulb', x: X(30), y: X(8), link: [rs, byp], nlink: nl });
@@ -235,12 +238,12 @@ S.circuit = (R, M) => {
   const b1 = L.add({ type: 'btn', x: X(45), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true, tag: 'bA' });
   const nc = H ? L.add({ type: 'btn', x: X(47), y: X(GY), w: 32, need: 1, style: 'sw', tag: 'cut' }) : null;
   L.fill(48, GY, 56, 16, ' ');
-  const b2 = L.add({ type: 'btn', x: X(58), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'bB' });
+  const b2 = L.add(Object.assign({ type: 'btn', x: X(58), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'bB' }, own(M, R, 2)));
   L.add({ type: 'door', x: X(48), y: X(GY), w: X(9), h: 14, link: [b1, b2], nlink: nc ? [nc] : undefined, inv: true, rate: 3, style: 'bridge' });
   L.add({ type: 'wire', pts: [[X(46), X(GY)], [X(46), X(11)], [X(60) - 12, X(11)], [X(60) - 12, X(GY)]], link: [b1, b2], nlink: nc ? [nc] : undefined });
   L.add({ type: 'flag', x: X(61), y: X(GY), idx: 3 });
   L.add({ type: 'exit', x: X(65), y: X(GY) - 60, w: 44, h: 60 });
-  return L.done({ id: 'circuit', name: '찌릿찌릿', sub: '직렬은 모두, 병렬은 하나만', sci: '전기 회로' });
+  return L.done({ id: 'circuit', name: '찌릿찌릿', sub: '직렬은 모두, 병렬은 하나만', sci: '전기 회로', dark: !!M.x });   // 하드: 불 꺼진 공장 (전구가 켜지면 둘레가 밝아진다)
 };
 
 /* 7. 불을 꺼라 — 연소의 세 조건(탈 물질·산소·발화점) 가운데 하나만 없애도 꺼진다 */
@@ -260,7 +263,7 @@ S.fire = (R, M) => {
   });
   const rv = L.add({ type: 'relay', link: vs, mode: 'all', mom: true });
   L.fill(18, 0, 20, 8);
-  const dm = L.add({ type: 'btn', x: X(22), y: X(GY), w: 64, need: 1, style: 'vent', tag: 'damper' });
+  const dm = L.add(Object.assign({ type: 'btn', x: X(22), y: X(GY), w: 64, need: 1, style: 'vent', tag: 'damper' }, own(M, R, 1)));
   L.add({ type: 'sign', x: X(22), y: X(10), txt: '공기 밸브', size: 12, w: 70 });
   L.add({ type: 'fire', x: X(18), y: X(9), w: 96, h: 128, link: [rv, dm], nlink: bw ? [bw] : undefined, rc: 4 });
   L.add({ type: 'flag', x: X(25), y: X(GY), idx: 1 });
@@ -329,14 +332,14 @@ S.freeze = (R, M) => {
   const dc = H ? L.add({ type: 'btn', x: X(dcx), y: X(GY), w: 48, need: 1, style: 'cool', tag: 'dec' }) : null;
   const rl = L.add({ type: 'relay', link: hs, mode: 'all', mom: true, nlink: dc ? [dc] : undefined });
   L.fill(40, 0, 41, 6);
-  const hf = L.add({ type: 'btn', x: X(43), y: X(GY), w: 64, need: 1, style: 'heat', tag: 'hf' });
+  const hf = L.add(Object.assign({ type: 'btn', x: X(43), y: X(GY), w: 64, need: 1, style: 'heat', tag: 'hf' }, own(M, R, 1)));
   L.add({ type: 'door', x: X(40), y: X(7), w: 64, h: X(6), link: [rl, hf], rate: 0.8, rc: 4, style: 'icewall' });
   L.add({ type: 'flag', x: X(46), y: X(GY), idx: 2 });
   // C. 더 넓은 물: 이번 얼음은 빨리 녹는다 (하드: 이쪽 냉각판 두 개를 함께 눌러야 언다. 셋 이상일 때)
   L.fill(52, GY, 63, 15, ' ');
   L.add({ type: 'water', x: X(52), y: X(GY) + 7, w: X(12), h: 89 });
   const c3 = L.add({ type: 'btn', x: X(48), y: X(GY), w: 64, need: 1, style: 'cool', soloLatch: true, tag: 'cC' });
-  const c4 = L.add({ type: 'btn', x: X(65), y: X(GY), w: 64, need: 1, style: 'cool', tag: 'cD' });
+  const c4 = L.add(Object.assign({ type: 'btn', x: X(65), y: X(GY), w: 64, need: 1, style: 'cool', tag: 'cD' }, own(M, R, 2)));
   const c5 = H ? L.add({ type: 'btn', x: X(50), y: X(GY), w: 64, need: 1, style: 'cool', minN: 3, tag: 'cE' }) : null;
   const rN = H ? L.add({ type: 'relay', link: [c3, c5], mode: 'all', mom: true }) : null;
   L.add({ type: 'door', x: X(52), y: X(GY), w: X(12), h: 14, link: H ? [rN, c4] : [c3, c4], inv: true, rate: 3, style: 'ice' });
@@ -358,7 +361,7 @@ S.light = (R, M) => {
   const z1 = L.add({ type: 'sensor', x: X(13), y: X(11), mom: true });
   L.add({ type: 'mirror', x: X(13), y: X(2), d: 0 });                              // 고정 거울: 위로 간 빛을 벽 위 틈으로
   L.fill(16, 0, 17, 10); L.fill(16, 2, 17, 2, ' ');
-  const p1f = L.add({ type: 'btn', x: X(21), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'lB' });
+  const p1f = L.add(Object.assign({ type: 'btn', x: X(21), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'lB' }, own(M, R, 1)));
   L.add({ type: 'mirror', x: X(20), y: X(2), d: 0, ok: 1, link: [p1f] });
   const z1f = L.add({ type: 'sensor', x: X(20), y: X(11), mom: true });
   L.add({ type: 'door', x: X(16) + 8, y: X(11), w: 48, h: 64, link: [z1, z1f], fast: true });
@@ -380,7 +383,7 @@ S.light = (R, M) => {
   const z2 = L.add({ type: 'sensor', x: X(45), y: X(10), mom: true });
   L.fill(47, 0, 48, 10);
   L.add({ type: 'beam', x: X(53), y: X(9), dir: 2 }); L.fill(53, 10, 53, 10);
-  const p2f = L.add({ type: 'btn', x: X(51), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'lD' });
+  const p2f = L.add(Object.assign({ type: 'btn', x: X(51), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'lD' }, own(M, R, 2)));
   L.add({ type: 'mirror', x: X(50), y: X(9), d: 0, ok: 1, link: [p2f] });
   const z2f = L.add({ type: 'sensor', x: X(50), y: X(6), mom: true });
   L.add({ type: 'door', x: X(47) + 8, y: X(11), w: 48, h: 64, link: [z2, z2f], fast: true });
@@ -399,15 +402,17 @@ S.light = (R, M) => {
   const z3f = L.add({ type: 'sensor', x: X(70), y: X(6), mom: true });
   L.add({ type: 'door', x: X(66) + 8, y: X(11), w: 48, h: 64, link: [z3, z3f], fast: true });
   L.add({ type: 'exit', x: X(75), y: X(GY) - 60, w: 44, h: 60 });
-  return L.done({ id: 'light', name: '빛을 따라', sub: '거울로 빛 꺾기', sci: '빛의 반사' });
+  return L.done({ id: 'light', name: '빛을 따라', sub: '거울로 빛 꺾기', sci: '빛의 반사', dark: !!M.x });   // 하드: 불 꺼진 방 (빛줄기와 켜진 감지기만 밝다)
 };
 
 YC.order = ['push', 'ice', 'saw', 'spring', 'raft', 'circuit', 'fire', 'balloon', 'freeze', 'light'];
 const cache = {};
-/* df: 0 노말, 1 하드. 같은 (스테이지, 씨앗, 난이도)면 늘 같은 판 */
+/* df: 0 노말, 1 하드. 같은 (스테이지, 씨앗, 난이도)면 늘 같은 판
+   노말도 장치가 여럿 붙은 판(M.hard)이다. 하드(M.x)는 여기에 색 단추(정해진 친구만 누를 수 있다)·불 꺼진 방이 붙고,
+   누가 한 명이라도 빠지면 다 같이 그 방 깃발부터 다시 한다(wipe, 연대 책임) */
 YC.build = (id, seed, df) => {
   df = df === 1 ? 1 : 0; const k = id + ':' + (seed >>> 0) + ':' + df;
-  if (!cache[k]) { const ks = Object.keys(cache); if (ks.length > 60) delete cache[ks[0]]; const d = S[id](Rnd(seed >>> 0), { hard: df === 1 }); d.df = df; cache[k] = d; }
+  if (!cache[k]) { const ks = Object.keys(cache); if (ks.length > 60) delete cache[ks[0]]; const d = S[id](Rnd(seed >>> 0), { hard: true, x: df === 1 }); d.df = df; d.hd = 1; d.wipe = df === 1; cache[k] = d; }
   return cache[k];
 };
 YC.DIFF = ['노말', '하드'];

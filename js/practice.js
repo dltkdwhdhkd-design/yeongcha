@@ -39,7 +39,7 @@ P.start = function (opt) {
   P.on = true; P.q.length = 0; P.key = ''; P.err = ''; P.errT = 0; YC.opt.noBlock = true; YC.opt.slim = true;              // AI 친구와는 서로 통과한다 (올라타기로 마음먹을 때만 밟힌다)
   P.names = {}; slots.forEach(s => { P.names[s] = NAMES[s]; });
   const seed = 1 + Math.floor(Math.random() * 999999);                                   // 판마다 배치가 조금씩 다르다
-  const df = opt.df === 1 ? 1 : 0;
+  const df = opt.df === 1 ? 1 : 0; P.df = df;
   const G = opt.startGame({ slot: 0, slots: slots, stages: opt.stages, team: 0, names: P.names, first: true, practice: P, seed: seed, df: df,
     send: (type, pay) => P.deliver(0, type, pay), onQuit: opt.onQuit });
   P.G = G;
@@ -81,6 +81,6 @@ P.step = function (now) {
     tm.out.length = 0;
   }
 };
-P.hint = function () { const g = P.on && P.bots[0]; return g && g.hint && performance.now() - g.hintAt > 6000 ? g.hint : null; };   // 혼자 6초 넘게 헤매면 그때 알려 준다
+P.hint = function () { const g = P.on && P.bots[0]; return g && g.hint && performance.now() - g.hintAt > (P.df ? 12000 : 6000) ? g.hint : null; };   // 혼자 6초(하드는 12초) 넘게 헤매면 그때 알려 준다
 window.YCPractice = P;
 })();

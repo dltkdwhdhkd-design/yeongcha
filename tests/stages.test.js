@@ -36,6 +36,22 @@ for (const df of MODES) { let bad = 0, all = 0;
 // 실제 게임처럼 서로 길을 막는 상태에서도 (하드는 셋이 쌓는 탑까지)
 if (!ONLY || ONLY === 'push') for (const df of MODES) for (const [id, n, net] of [['push', 2, [0, 0, 0]], ['push', 2, [150, 40, 0.02]], ['push', 3, [150, 40, 0.02]]]) run(id, n, net, 7, true, df);
 
+// 하드의 연대 책임: 중간에 한 명이 떨어지면 다 같이 그 방 깃발로 돌아가 (장치도 처음 모습으로) 다시 깬다
+if (MODES.indexOf(1) >= 0) { let bad = 0, all = 0;
+  for (const id of YC.order) for (const n of [2, 3, 4]) for (const f of [0.3, 0.6]) {
+    if (ONLY && ONLY !== id) continue;
+    const s0 = new Sim({ n, stages: [id], df: 1, delay: 80, jitter: 20, seed: 7 }); scripts[id](s0);
+    s0.run(400, () => s0.teams.every(t => t.TS.ph === 4)); const T0 = s0.anchor().TS.cl[0] || 60000;
+    const s = new Sim({ n, stages: [id], df: 1, delay: 80, jitter: 20, seed: 7 }); scripts[id](s);
+    s.run(T0 / 1000 * f, () => false);
+    const v = s.teams[n - 1], run0 = s.anchor().TS.run; let wiped = false;
+    Object.assign(v.me, { gr: false, gRef: 0, saw: 0, hRef: 0, vy: 600, y: v.W.h + 200 });   // 떨어뜨린다
+    const ok = s.run(400, () => { if (s.anchor().TS.run !== run0) wiped = true; return s.teams.every(t => t.TS.ph === 4); });
+    all++; if (ok && wiped) pass++; else { bad++; fail++; fails.push('하드 연대 책임 ' + id + ' ' + n + '명 ' + Math.round(f * 100) + '%: 깃발로 ' + wiped + ', 완주 ' + ok); }
+  }
+  console.log('하드 연대 책임 (한 명이 빠지면 다 같이 깃발부터) ' + all + '판 중 실패 ' + bad);
+}
+
 // 기준 기기가 멈췄다가 돌아와도 이어진다
 if (!ONLY) (function takeover() {
   const s = new Sim({ n: 4, stages: ['push'], delay: 100, jitter: 30, loss: 0.01, seed: 3 });

@@ -11,7 +11,7 @@ const X = c => c * T + 16;                       // 칸 가운데
 const ctr = o => o.x + o.w / 2;
 const isH = o => !!o.tell;                       // 사람 자리
 const live = o => o.me.dead <= 0 && !o.me.fin;
-const isHard = b => !!(b.T.W.def && b.T.W.def.df === 1);
+const isHard = b => !!(b.T.W.def && b.T.W.def.hd);              // 장치가 더 붙은 판 (노말·하드 모두)
 const need = (s, n) => (s.minN && n < s.minN) ? 0 : YC.needOf(s.type === 'pad' ? s.eq : s.need, n);   // 이 장치에 서야 하는 사람 수
 const pri = (a, b) => ((isH(a) ? 1 : 0) - (isH(b) ? 1 : 0)) || (b.i - a.i);            // 일을 맡길 차례
 let curB = null;                                 // 지금 일을 고르는 팀 (머리 위에 선 사람을 아래 사람의 자리로 치기 위해)
@@ -46,9 +46,10 @@ const stuckFor = (sim, sh, k, bad, ms, msg) => { if (!bad) { sh[k] = 0; return; 
 function* goto(b, x, stop, tol) { b.me.ride = false; yield* b.walkTo(x, tol || 6, 30, stop); }
 function* still(b, stop, hint) { b.stop(); b.inp.j = 0; if (b.tell) b.tell(hint || { k: 'wait' }); for (let t = 0; t < 12; t++) { yield; if (stop && stop()) return; } }
 /* x에 맨땅(또는 장치 위)으로 서서 버틴다 */
-function* stay(b, x, stop, tol) {
+function* stay(b, x, stop, tol, dev) {                            // dev: 밟고 서야 하는 장치 (사람에게는 가까이 섰어도 장치를 밟을 때까지 '여기로')
   tol = b.tell ? Math.max(tol || 8, 22) : (tol || 8);
   if (b.me.gr && b.me.gRef < 0) { yield* offHead(b, b.cx() < x ? 1 : -1, stop); return; }
+  if (b.tell && dev && !onIt(b, dev)) { b.tell({ k: 'go', x: x }); for (let t = 0; t < 12; t++) { yield; if (stop && stop()) return; } return; }
   if (Math.abs(b.cx() - x) > tol || !b.me.gr) { b.me.ride = false; yield* b.walkTo(x, Math.min(tol, 4), 30, stop); return; }
   yield* still(b, stop, { k: 'wait' });
 }
@@ -148,17 +149,19 @@ function* goExit(b) {
 
 /* ═══════════ 공통 일감 ═══════════ */
 /* 장치마다 설 사람을 정한다: 이미 서 있는 사람(사람이 먼저)을 먼저 치고, 모자라면 AI가(번호 큰 쪽부터) 채운다 */
-function fill(cs, ppl, n) {
-  const m = new Map(), used = new Set();
+function fill(cs, ppl, n, late) {                                // late: 될 수 있으면 맡기지 않을 사람 (저쪽 색 단추를 눌러야 할 친구)
+  const m = new Map(), used = new Set(), lt = o => late && late.has(o) ? 1 : 0;
   for (const s of cs) {
     const k = need(s, n); if (!k) continue;
+    if (s.only !== undefined) { const o = s.own >= 0 ? ppl.find(q => q.i === s.own) : null; if (o && !used.has(o)) { m.set(o, s); used.add(o); } continue; }   // 색 단추는 그 색 친구만
     const dir = o => o.me.gRef === s.id ? 1 : 0;                   // 장치를 직접 밟은 사람이 먼저 (그 머리 위에 선 사람은 아래 사람이 비키면 함께 밀려난다)
     const still0 = o => { for (let q = o, d = 0; q && d < 6; d++) { if (Math.abs(q.me.vx) >= 60) return false; if (!(q.me.gr && q.me.gRef < 0) || !curB) return true; q = curB[-q.me.gRef - 1]; } return true; };   // 머리 위에 선 사람은 아래 사람까지 멈춰 있어야
-    const here = ppl.filter(o => onIt(o, s) && still0(o) && !used.has(o)).sort((a, b) => (dir(b) - dir(a)) || ((isH(b) ? 1 : 0) - (isH(a) ? 1 : 0)) || (b.i - a.i));
+    const here = ppl.filter(o => onIt(o, s) && still0(o) && !used.has(o) && !lt(o)).sort((a, b) => (dir(b) - dir(a)) || ((isH(b) ? 1 : 0) - (isH(a) ? 1 : 0)) || (b.i - a.i));
     for (const o of here.slice(0, k)) { m.set(o, s); used.add(o); }
   }
-  const free = ppl.filter(o => !used.has(o)).sort(pri);
+  const free = ppl.filter(o => !used.has(o)).sort((a, b) => (lt(a) - lt(b)) || pri(a, b));
   for (const s of cs) {
+    if (s.only !== undefined) continue;
     let k = need(s, n); for (const t of m.values()) if (t === s) k--;
     while (k-- > 0 && free.length) { const o = free.shift(); m.set(o, s); used.add(o); }
   }
@@ -181,7 +184,7 @@ function* standOn(b, s, x, stop) {
     yield* b.jump(Math.max(s.x + 14, Math.min(s.x + s.w - 14, x)), 4); return;
   }
   if (s.type === 'pad') { if (Math.abs(b.cx() - x) > 6 && !b.tell) { yield* b.walkTo(x, 4, 10, stop); return; } yield* still(b, stop, { k: 'wait' }); return; }
-  yield* stay(b, x, stop, Math.min(12, s.w / 2 - 10));
+  yield* stay(b, x, stop, Math.min(12, s.w / 2 - 10), s);
 }
 
 /* 릴레이: near(이쪽 장치)를 누르고 있는 동안 길이 열린다 → 나머지가 건너가고, 건너간 사람이 far(저쪽 장치)를 누르면 near를 누르던 사람도 건너온다.
@@ -201,7 +204,8 @@ function relayJob(b, sim, c) {
   }
   if (s0 === 0) return crossJ;
   const farOn = farC.length > 0 && farC.every(okOf);
-  const m = fill(nearC, B.filter(o => live(o) && side(o) < 0), n), s = m.get(b);
+  const late = new Set(farC.filter(q => q.only !== undefined && q.own >= 0).map(q => B[q.own]).filter(Boolean));   // 저쪽 색 단추의 주인은 건너가야 하므로 이쪽 장치를 맡기지 않는다
+  const m = fill(nearC, B.filter(o => live(o) && side(o) < 0), n, late), s = m.get(b);
   if (c.open(b)) {
     if (s && onIt(b, s) && !s.lat && farC.length && !farOn) return { k: "n" + s.id, go: stop => still(b, stop, { k: "wait" }) };   // 맡은 장치(한 번 밟아 고정된 것은 빼고): 저쪽이 받아 줄 때까지 그대로
     return crossJ;
@@ -257,6 +261,8 @@ function* climbUp(b, tp, c, stop) {
   if (!(b.me.gr && b.me.gRef === hid(tp))) { if (!(yield* hopOn(b, tp, stop))) return; }
   if (b.tell) b.tell({ k: 'wait' });
   for (let t = 0; t < 18; t++) { if (stop()) return; yield; }        // 받침이 멈춰 설 때까지 잠깐
+  if (c.edge && !b.tell) for (let t = 0; t < 12 && b.cx() + 12 > c.edge - 3 && b.me.gr && b.me.gRef === hid(tp); t++) { b.inp.l = 1; b.inp.r = 0; yield; }   // 선반 바로 밑이면 머리를 찧으니 조금 물러서서
+  b.stop();
   yield* b.jump(c.top, 4);
   for (let t = 0; t < 30 && !b.me.gr; t++) yield;
   if (!c.up(b) && b.me.gr && b.me.gRef < 0 && !b.tell) yield* offHead(b, -1);   // 사람은 머리 위에서 다시 뛰면 된다
@@ -284,11 +290,11 @@ function shelfRelayJob(b, sim, c) {
   if (side(b) === 0) return gotoJ(b, 'cross', c.x1 + 40, 16);
   if (up(b)) {
     if (farOn || n === 1 || c.sw(b).lat) return gotoJ(b, 'down', c.x1 + 40, 16);       // 저쪽이 받아 주면 내려와 건넌다
-    return { k: 'sh', go: stop => stay(b, ctr(c.sw(b)), stop, 12) };
+    return { k: 'sh', go: stop => stay(b, ctr(c.sw(b)), stop, 12, c.sw(b)) };
   }
   if (c.open(b)) return gotoJ(b, 'cross', c.x1 + 40, 16);
   if (B.some(o => live(o) && up(o))) return idleJ(b, 'shw', X(c.c0 - 4) - rk(b) * 20);   // 선반에 오른 친구가 장치를 밟을 때까지
-  return towerJob(b, sim, { bx: X(c.c0 - 1) - 4, top: X(c.c0 + 1), tall: c.tall, up: up, more: () => B.some(o => live(o) && up(o)) ? 0 : 1, wx: X(c.c0 - 4), solo: soloShelf(b, c.c0, c.tall) })
+  return towerJob(b, sim, { bx: X(c.c0 - 1) - 4, top: X(c.c0 + 1), edge: c.c0 * T, tall: c.tall, up: up, more: () => B.some(o => live(o) && up(o)) ? 0 : 1, wx: X(c.c0 - 4), solo: soloShelf(b, c.c0, c.tall) })
     || idleJ(b, 'shw', X(c.c0 - 4));
 }
 
@@ -311,7 +317,7 @@ scripts.push = function (sim) {
     yield* jobs(b, () => {
       if (B.every(o => o.me.fin || (live(o) && o.cx() > A().x + A().w + 4))) return null;
       const set = b2().on, open = d1().open > 0.9;
-      if (upA(b)) return set || b1().lat ? gotoJ(b, 'down', X(18)) : { k: 'hold', go: stop => stay(b, ctr(b1()), stop, 12) };
+      if (upA(b)) return set || b1().lat ? gotoJ(b, 'down', X(18)) : { k: 'hold', go: stop => stay(b, ctr(b1()), stop, 12, b1()) };
       if (b.cx() < dX) {
         if (open) return gotoJ(b, 'thru', X(18));
         if (B.some(o => live(o) && upA(o))) return idleJ(b, 'wsh', X(12) - rk(b) * 18);
@@ -513,6 +519,8 @@ scripts.saw = function (sim) {
       if (onSaw(b, sawA()) && b.cx() < 480) { if (b.cx() > end() + 4 && !b.tell) { yield* b.walkTo(end(), 2, 6, stop); return; } yield* still(b, stop, { k: 'wait' }); return; }
       if (b.tell) { yield* b.walkTo(436, 14, 30, stop); return; }
       yield* b.walkTo(402, 3, 20, stop); if (stop()) return;
+      // 올라갈 친구가 아직 시소 왼쪽 절반을 지나는 중이면 판이 기울며 흔들린다: 지나간 뒤 판이 멈추면 뛰어오른다 (흔들리는 끝을 놓치면 구덩이)
+      for (let t = 0; t < 240 && (B.some(o => o !== b && live(o) && o.cx() > 370 && o.cx() < 600 && o.feet() > 380) || Math.abs(sawA().om || 0) > 0.05); t++) { if (stop()) return; yield; }
       yield* b.jump(437, 3);
     };
     // A. 시소로 턱 위 → 턱 위 단추(누르는 동안만 문) → 건너간 친구가 문 너머 단추로 받아 준다
@@ -522,17 +530,20 @@ scripts.saw = function (sim) {
       if (past(b)) {
         if (!B.some(o => !o.me.fin && (o.me.dead > 0 || !past(o)))) return null;
         const m = fill([bf()], B.filter(o => live(o) && past(o)), n), s = m.get(b);
-        return s ? { k: 'af', go: stop => stay(b, ctr(s), stop, 14) } : idleJ(b, 'aw', X(32) - rk(b) * 6);
+        return s ? { k: 'af', go: stop => stay(b, ctr(s), stop, 14, s) } : idleJ(b, 'aw', X(32) - rk(b) * 6);
       }
-      if (ledge(b)) return bf().on || b1().lat ? gotoJ(b, 'adown', dX + 80, 14) : { k: 'ahold', go: stop => stay(b, ctr(b1()) + (rk(b, B.filter(ledge)) ? 14 : -10), stop, 12) };
+      if (ledge(b)) return bf().on || b1().lat ? gotoJ(b, 'adown', dX + 80, 14) : { k: 'ahold', go: stop => stay(b, ctr(b1()) + (rk(b, B.filter(ledge)) ? 14 : -10), stop, 12, b1()) };
       if (b.cx() > 21 * T && b.cx() < dX) return open ? gotoJ(b, 'athru', dX + 80, 14) : gotoJ(b, 'aback', X(8), 14);   // 오른쪽 둑: 문이 닫혔으면 시소로 돌아간다
       if (b.cx() >= dX) return gotoJ(b, 'athru', dX + 80, 14);
       if (open) return { k: 'across', go: cross };
+      // 누르던 사람: 다 쏘아 올렸으면 시소 왼쪽 끝(구덩이 위로 내려가 있다)에서 그대로 기다렸다가 문이 열리면 시소를 건너간다
+      // (왼쪽으로 걸어 나가면 구덩이에 빠진다 — 하드는 다 같이 깃발부터)
+      if (onSaw(b, sawA()) && b.cx() < 520 && B.filter(o => live(o) && ledge(o)).length >= need(b1(), n)) return { k: 'aon', go: stop => still(b, stop, { k: 'wait' }) };
       if (n === 1) return { k: 'asolo', go: function* (stop) { yield* b.walkTo(640, 6, 20, stop); yield* b.jump(X(21), 5); yield* b.jump(X(23), 6); yield* b.walkTo(ctr(b1()), 6, 10, stop); } };
       const K = need(b1(), n);
       if (B.filter(o => live(o) && ledge(o)).length >= K) return idleJ(b, 'aw2', X(6) - rk(b) * 20);
       const av = B.filter(o => live(o) && !ledge(o) && o.cx() <= 21 * T);
-      const riderNow = av.find(o => onSaw(o, sawA()) && o.cx() > 600), pressNow = av.find(o => onSaw(o, sawA()) && o.cx() < 470);
+      const riderNow = av.find(o => onSaw(o, sawA()) && o.cx() > 600), pressNow = av.find(o => onSaw(o, sawA()) && o.cx() < 470 && Math.abs(o.me.vx) < 40);   // 시소를 건너가는 중인 사람은 누르는 사람으로 치지 않는다
       const order = av.slice().sort(pri), rider = riderNow || order.find(o => o !== pressNow), presser = pressNow || order.find(o => o !== rider);
       if (b === rider) return { k: 'aride', go: ride };
       if (b === presser) return { k: 'apress', go: press };
@@ -547,7 +558,7 @@ scripts.saw = function (sim) {
       if (n === 1) return { k: 'bsolo', go: function* (stop) { yield* b.walkTo(X(49 + 6) + 14, 4, 40, stop); yield* b.jump(X(54)); yield* b.jump(X(53)); yield* b.jump(X(52)); yield* b.jump(X(50), 6); yield* b.walkTo(X(48) + 26, 5, 10, stop); } };
       const av = B.filter(o => live(o));
       let holder = null;
-      if (glass) { const m = fill([bf()], av.filter(o => o.cx() < 33 * T - 8 && o.feet() > 380), n); for (const [o] of m) holder = o; if (holder === b) return { k: 'bh', go: stop => stay(b, ctr(bf()), stop, 14) }; }
+      if (glass) { const m = fill([bf()], av.filter(o => o.cx() < 33 * T - 8 && o.feet() > 380), n); for (const [o] of m) holder = o; if (holder === b) return { k: 'bh', go: stop => stay(b, ctr(bf()), stop, 14, bf()) }; }
       const pool = av.filter(o => o !== holder);
       const rightSide = o => o.cx() > 38 * T + 4 && o.feet() > 300;                     // 탑 오른쪽 아래 (여기서는 다시 탑에 못 오른다)
       const riderNow = pool.find(o => o.me.gr && o.cx() > sB + 50 && o.cx() < endB + 20 && o.feet() > 380 && (!isH(o) || !pool.some(q => !isH(q) && rightSide(q))));
@@ -625,7 +636,7 @@ scripts.spring = function (sim) {
       if (n === 1) return { k: 'solo', go: function* (stop) { yield* b.walkTo(X(41) + 14, 6, 40, stop); yield* b.jump(X(40), 4); yield* b.jump(X(39), 4); yield* b.jump(X(38), 4); yield* b.jump(X(36), 6); yield* b.walkTo(X(35) + 16, 5, 10, stop); } };
       const av = B.filter(live), latched = gb().lat;
       // 왼쪽 선반에 오른 사람은 단추를 밟고 있는다 (둘이라 고정되었으면 내려온다)
-      if (shelfL(b)) return latched ? gotoJ(b, 'sdown', X(27), 10) : { k: 'shold', go: stop => stay(b, ctr(gb()), stop, 14) };
+      if (shelfL(b)) return latched ? gotoJ(b, 'sdown', X(27), 10) : { k: 'shold', go: stop => stay(b, ctr(gb()), stop, 14, gb()) };
       let ph = null;
       if (pk()) { const m = fill([pk()], av.filter(o => !shelfL(o)), n); for (const [o] of m) ph = o; if (ph === b) return { k: 'pk', go: stop => standOn(b, pk(), ctr(pk()), stop) }; }
       const shelfer = av.find(shelfL);
@@ -679,7 +690,7 @@ scripts.raft = function (sim) {
       if (keyFree() && !crossed(b) && !aboard(b) && live(b) && B.filter(o => live(o) && !crossed(o) && !aboard(o)).sort(pri)[0] === b)
         return { k: 'key', go: function* (stop) { yield* b.walkTo(X(6) - 4, 5, 20, stop); if (stop()) return; yield* b.jump(X(7), 4); } };   // 열쇠는 건너기 전에 줍는다
       if (crossed(b)) {
-        if (hard && near.length) { const m = fill([g2()], B.filter(o => live(o) && crossed(o)), n); if (m.get(b)) return { k: 'g2', go: stop => stay(b, ctr(g2()), stop, 14) }; }
+        if (hard && near.length) { const m = fill([g2()], B.filter(o => live(o) && crossed(o)), n); if (m.get(b)) return { k: 'g2', go: stop => stay(b, ctr(g2()), stop, 14, g2()) }; }
         return idleJ(b, 'fw', X(34) + rk(b) * 14);
       }
       if (aboard(b)) {
@@ -692,7 +703,7 @@ scripts.raft = function (sim) {
       // 수문 (하드): 건너편 단추가 눌릴 때까지 이쪽 단추를 지킨다
       const eligible = B.filter(o => live(o) && !crossed(o) && !aboard(o));
       let gh = null;
-      if (hard && !(g2().on) && !g1().lat) { const m = fill([g1()], eligible, n); for (const [o] of m) gh = o; if (gh === b) return { k: 'g1', go: stop => stay(b, ctr(g1()), stop, 14) }; }
+      if (hard && !(g2().on) && !g1().lat) { const m = fill([g1()], eligible, n); for (const [o] of m) gh = o; if (gh === b) return { k: 'g1', go: stop => stay(b, ctr(g1()), stop, 14, g1()) }; }
       const R = raft();
       if (!atDock() || R.st !== 0) return idleJ(b, 'nw', X(3) + rk(b) * 18);
       // 이번에 탈 사람: 이미 탄 사람 + 모자라면 차례대로 (남은 사람이 셋 이상이면 사람 셋, 아니면 한 명 + 쇠 추)
@@ -806,7 +817,7 @@ function balloonJob(b, sim, c) {
   const final = low.length <= cap && ups.length >= k2;               // 남은 사람이 다 탈 수 있고, 위에서 끌어올려 줄 사람이 있다
   const wx = L.x1 - 20;                                              // 열기구 바로 옆 (버너를 밟지 않는 자리)
   if (up(b)) {
-    if (final && low.every(o => live(o) && onL(o))) { const m = fill([h2], ups, n), s = m.get(b); if (s) return { k: 'h2', go: stop => stay(b, spotOn(b, s, m), stop, 10) }; }
+    if (final && low.every(o => live(o) && onL(o))) { const m = fill([h2], ups, n), s = m.get(b); if (s) return { k: 'h2', go: stop => stay(b, spotOn(b, s, m), stop, 10, s) }; }
     if (final) { const m = fill([h2], ups, n); if (m.get(b)) return idleJ(b, 'h2w', h2.x - 34); }   // 버너 바로 옆 (밟지 않고)
     return idleJ(b, 'uw', Math.max(c.goal, h2.x + h2.w + 24) + rk(b) * 14);          // 위 버너를 밟지 않는 자리에서
   }
@@ -823,7 +834,7 @@ function balloonJob(b, sim, c) {
   }
   if (holders.indexOf(b) >= 0) {
     const go = riders.length > 0 && riders.every(onL);
-    if (go && (L.t < 0.995 || riders.some(o => !up(o) && onL(o)))) return { k: 'h1', go: stop => stay(b, spotOn(b, h1, new Map(holders.map(o => [o, h1]))), stop, 10) };
+    if (go && (L.t < 0.995 || riders.some(o => !up(o) && onL(o)))) return { k: 'h1', go: stop => stay(b, spotOn(b, h1, new Map(holders.map(o => [o, h1]))), stop, 10, h1) };
     return idleJ(b, 'h1w', h1.x - 24 - rk(b, holders) * 10);
   }
   if (riders.indexOf(b) >= 0) {
@@ -890,6 +901,8 @@ scripts.light = function (sim) {
   }));
 };
 
+/* 연대 책임(하드)으로 판이 깃발부터 다시 시작되면 대본도 새로 건다 (시험 도구가 sim.rerun을 부른다. 혼자 연습은 practice.js가 다시 건다) */
+for (const id of Object.keys(scripts)) { const f = scripts[id]; scripts[id] = sim => { sim.rerun = () => f(sim); f(sim); }; }
 const AI = { scripts, hopOn, offHead, goExit, stay, overBox, X, jobs, relayJob, towerJob };
 if (typeof module !== 'undefined' && module.exports) module.exports = AI; else root.YCAI = AI;
 })(typeof window !== 'undefined' ? window : globalThis);

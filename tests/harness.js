@@ -47,6 +47,15 @@ Sim.prototype.step = function () {
     }
     tm.out.length = 0;
   }
+  // 같은 스테이지가 처음부터(투표) 또는 깃발부터(하드의 연대 책임) 다시 시작되면 대본을 새로 건다 (혼자 연습의 practice.js와 같게)
+  const a = this.teams.find(t => t.anchor);
+  if (a) {
+    const key = a.TS.stage + ':' + a.TS.run;
+    if (this.runKey !== undefined && key !== this.runKey && a.TS.stage === this.runStage && this.rerun) this.pendRun = a.TS.run;
+    this.runKey = key; this.runStage = a.TS.stage;
+    // 모든 기기가 새 판을 받은 뒤에 (늦게 받은 기기의 대본이 옛 판의 장치를 붙들고 있지 않게)
+    if (this.pendRun !== undefined && this.teams.every((t, i) => this.bots[i].off || (t.TS.stage === a.TS.stage && t.TS.run === this.pendRun))) { this.pendRun = undefined; this.rerun(); }
+  }
 };
 /* 모든 봇의 대본이 끝나거나 조건이 참이 될 때까지 */
 Sim.prototype.run = function (sec, until) {

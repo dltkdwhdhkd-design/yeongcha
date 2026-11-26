@@ -64,7 +64,7 @@ const SOLID = { box: 1, door: 1, lift: 1, pad: 1, raft: 1 };
 function initObj(o) {
   switch (o.type) {
     case 'box': o.hx = o.x; o.hy = o.y; o.vx = 0; o.vy = 0; o.gr = 1; o.sup = 0; o.rs = 0; o.fr = 0; o.fl = 0; o.nd = 1; o.ice = 0; o.wt = o.wt || 1; break;
-    case 'btn': o.on = 0; o.lat = 0; o.load = 0; o.hold = 0; break;
+    case 'btn': o.on = 0; o.lat = 0; o.load = 0; o.hold = 0; if (o.only !== undefined) o.own = -1; break;   // only: 색 단추 — 팀에서 (only % 인원)번째 친구만 누를 수 있다. own: 그 친구의 자리 번호
     case 'door': o.open = o.inv ? 1 : 0; break;                  // 거꾸로 이은 문(다리)은 처음에 없는 상태
     case 'lift':
       o.x1 = o.x; o.y1 = o.y; if (o.x2 === undefined) o.x2 = o.x; if (o.y2 === undefined) o.y2 = o.y;
@@ -139,7 +139,7 @@ World.prototype.buildSolids = function () {
 function packObj(o) {
   switch (o.type) {
     case 'box': return [r1(o.x), r1(o.y), r0(o.vx), o.fr | (o.fl << 3) | (o.nd << 6) | ((o.rs > 0 ? 1 : 0) << 10) | ((o.gr ? 1 : 0) << 11) | ((o.ice ? 1 : 0) << 12), o.sup];
-    case 'btn': return [o.on | (o.lat << 1), o.load, r1(o.hold)];
+    case 'btn': return o.only !== undefined ? [o.on | (o.lat << 1), o.load, r1(o.hold), o.own] : [o.on | (o.lat << 1), o.load, r1(o.hold)];
     case 'door': return [r2(o.open)];
     case 'lift': return [r3(o.t), o.dirn, r2(o.wait)];
     case 'saw': return [r3(o.th), r2(o.om), o.kq, o.ks, r2(o.kp)];
@@ -161,7 +161,7 @@ function applyObj(o, a, b, k) {
       const f = a[3]; o.fr = f & 7; o.fl = (f >> 3) & 7; o.nd = (f >> 6) & 15; o.rs = (f >> 10) & 1 ? 1 : 0; o.gr = (f >> 11) & 1; o.ice = (f >> 12) & 1; o.vx = a[2]; o.sup = a[4];
       if (abs(b[0] - a[0]) > 90 || abs(b[1] - a[1]) > 90) { o.x = a[0]; o.y = a[1]; } else { o.x = lerp(a[0], b[0], k); o.y = lerp(a[1], b[1], k); }
       break; }
-    case 'btn': o.on = a[0] & 1; o.lat = (a[0] >> 1) & 1; o.load = a[1]; o.hold = a[2] || 0; break;
+    case 'btn': o.on = a[0] & 1; o.lat = (a[0] >> 1) & 1; o.load = a[1]; o.hold = a[2] || 0; if (a.length > 3) o.own = a[3]; break;
     case 'door': o.open = lerp(a[0], b[0], k); break;
     case 'lift': o.t = lerp(a[0], b[0], k); o.dirn = a[1]; o.wait = a[2]; o.x = lerp(o.x1, o.x2, o.t); o.y = lerp(o.y1, o.y2, o.t); break;
     case 'saw': o.th = lerp(a[0], b[0], k); o.om = a[1]; o.kq = a[2]; o.ks = a[3]; o.kp = a[4]; break;
@@ -623,7 +623,11 @@ function simWorld(W, R, dt) {
     if (b.minN && n < b.minN) { b.on = 1; b.load = 0; continue; }                     // 팀 인원이 적으면 이 단추는 필요 없다 (늘 켜진 것으로)
     let w = b.boxOnly ? 0 : (pl[b.id] || 0);
     const ovm = b.ov || 6;                                                                // ov: 상자가 단추와 이만큼은 겹쳐야 눌린다
-    for (const x of W.boxes) if (!(x.rs > 0) && x.gr && abs(x.y + x.h - b.y) < 3 && x.x < b.x + b.w - ovm && x.x + x.w > b.x + ovm) w += x.wt + (b.boxOnly ? 0 : (pl[x.id] || 0));
+    if (b.only !== undefined) {                                                           // 색 단추: 그 색 친구가 직접 올라서야만 눌린다 (다른 친구·상자는 안 된다)
+      const L = W.who || []; b.own = L.length ? L[b.only % L.length] : -1;
+      const r = b.own >= 0 ? R[b.own] : null; w = r && r.on && r.gRef === b.id ? 1 : 0;
+    }
+    else for (const x of W.boxes) if (!(x.rs > 0) && x.gr && abs(x.y + x.h - b.y) < 3 && x.x < b.x + b.w - ovm && x.x + x.w > b.x + ovm) w += x.wt + (b.boxOnly ? 0 : (pl[x.id] || 0));
     const on = w >= needOf(b.need, n);
     if (b.latchT) { b.hold = on ? b.hold + dt : 0; if (b.hold >= b.latchT) b.lat = 1; }   // 한동안 눌린 채로 있으면 딸깍 고정
     else if ((b.latch || (b.soloLatch && n <= 1) || (b.latchN && n <= b.latchN)) && on) b.lat = 1;   // latchN: 팀이 이 인원 이하면 한 번 밟으면 고정
@@ -762,15 +766,15 @@ Team.prototype.setSlots = function (slots) {
 };
 /* 다시 시작 투표: [찬성 수, 지금 인원] */
 Team.prototype.votes = function () { let v = this.me.vote ? 1 : 0, n = 1; for (const s of this.slots) if (s !== this.slot) { const g = this.ghosts[s]; if (g.present) { n++; if (g.rep && g.rep.vote && g.rep.sr === this.sr()) v++; } } return [v, n]; };
-Team.prototype.load = function () {
+Team.prototype.load = function (wipe) {                                                  // wipe: 연대 책임으로 판을 처음 모습으로 되돌리고 TS.ck 깃발에서 다시
   const TS = this.TS, me = this.me;
   const ls = lseed(this.seed, TS.stage); this.W = new World(this.build(this.stages[TS.stage], ls, this.df));
   this.lkey = this.stages[TS.stage] + ':' + ls + ':' + this.df + ':' + this.W.objs.length + ':' + VERSION;
   this.W.n = TS.n; this.ws = new Stream(); this.hist.length = 0;
-  me.fin = false; me.ck = 0; me.vote = 0; me.ldSeq = 0; me.ldObj = 0; me.kseen = {}; me.want = false; me.ul = false; me.atExit = false;
+  me.fin = false; me.ck = TS.ck | 0; me.vote = 0; me.ldSeq = 0; me.ldObj = 0; me.kseen = {}; me.want = false; me.ul = false; me.atExit = false;
   for (const o of this.W.kickers) me.kseen[o.id] = 0;
-  spawnAt(me, this.W, this.idx, 0);
-  this.ev.push(['stage', TS.stage]);
+  spawnAt(me, this.W, this.idx, me.ck);
+  this.ev.push(['stage', TS.stage, wipe ? 1 : 0]);
 };
 /* 선생님이 시작을 누름. first: 내가 첫 기준 기기로 지정됨 */
 Team.prototype.start = function (now, first) { this.t0 = now; if (first && !this.anchor && this.seenEp === 0) this.becomeAnchor(); };
@@ -811,7 +815,8 @@ Team.prototype.onWorld = function (from, d, now) {
   if (d.q <= this.wq && this.wq - d.q < 2000) return;
   this.wq = d.q; this.lastW = now;
   const ts = d.ts, TS = this.TS, ph0 = TS.ph, first = !this.heard; this.heard = true;
-  if (ts[0] !== TS.stage || ts[1] !== TS.run) { TS.stage = ts[0]; TS.run = ts[1]; TS.n = ts[5]; this.load(); }
+  if (ts[0] !== TS.stage || ts[1] !== TS.run) { const wipe = ts[0] === TS.stage && (ts[7] | 0) !== (TS.wp | 0); TS.stage = ts[0]; TS.run = ts[1]; TS.n = ts[5]; TS.ck = ts[4] | 0; TS.wp = ts[7] | 0; this.load(wipe); }   // 깃발에서 다시(연대 책임)면 그 깃발에서 나타난다
+  TS.wp = ts[7] | 0;
   if (d.lk && d.lk !== this.lkey) { this.mism = (this.mism || 0) + 1; return; }       // 다른 판(옛 캐시·다른 배치)의 상태는 받지 않는다: 상자가 엉뚱하게 사라지는 일을 막는다
   this.mism = 0;
   TS.ph = ts[2]; TS.tm = ts[3]; TS.ck = ts[4]; TS.n = ts[5]; TS.cd = ts[6] / 100; if (d.cl) TS.cl = d.cl; if (d.sk) TS.sk = d.sk; this.tmAt = now;
@@ -856,11 +861,29 @@ Team.prototype.flow = function (dt, now) {
     TS.tm += dt * 1000;
     if (this.skipReq === TS.stage) { TS.sk[TS.stage] = 1; TS.cl[TS.stage] = r0(TS.tm) + SKIP_PEN; this.next(); }
     else if (here > 0 && here === n && fin === here) { TS.cl[TS.stage] = r0(TS.tm); TS.ph = PH_CLEAR; TS.cd = 2.4; this.ev.push(['clear']); }
-    else if (votes > n / 2 && now - this.lastRestart > 3000) { this.lastRestart = now; TS.run++; TS.ck = 0; this.load(); this.ev.push(['restart']); }
+    else if (votes > n / 2 && now - this.lastRestart > 3000) { this.lastRestart = now; TS.run++; TS.ck = 0; this.wipeAt = 0; this.load(); this.ev.push(['restart']); }
+    else if (this.W.def.wipe && n > 1) this.wipe(now, sr);
   } else if (TS.ph === PH_CLEAR) { TS.cd -= dt; if (TS.cd <= 0) this.next(); }
+};
+/* 하드의 연대 책임: 누가 한 명이라도 빠지면(가시·물·불·낭떠러지) 잠깐 뒤 다 같이 그 방의 깃발로 돌아가고, 방의 장치도 처음 모습으로.
+   돌아갈 깃발은 가장 뒤처진 사람의 깃발이다 (먼저 건너간 사람의 깃발로 모두 옮기면 남은 사람이 방을 건너뛰게 되므로) */
+Team.prototype.wipe = function (now, sr) {
+  const TS = this.TS; let dead = false, lo = 1e9;
+  for (const s of this.slots) {
+    const r = s === this.slot ? this.live : (this.ghosts[s].present ? this.ghosts[s].rep : null);
+    if (!r || r.sr !== sr) continue;
+    if (r.dead) dead = true;
+    lo = min(lo, r.ck | 0);
+  }
+  if (dead && !(this.wipeAt > 0)) this.wipeAt = now + 650;                                 // 빠지는 모습을 잠깐 보여 주고
+  if (this.wipeAt > 0 && now >= this.wipeAt) {
+    this.wipeAt = 0; TS.run++; TS.ck = lo < 1e9 ? lo : 0; TS.wp = (TS.wp | 0) + 1; this.lastRestart = now;
+    this.load(true); this.ev.push(['wipe']);
+  }
 };
 Team.prototype.next = function () {
   const TS = this.TS;
+  this.wipeAt = 0;
   if (TS.stage + 1 < this.stages.length) { TS.stage++; TS.run++; TS.tm = 0; TS.ck = 0; TS.ph = PH_READY; TS.cd = 1.8; this.load(); }
   else { TS.ph = PH_DONE; TS.cd = 0; this.ev.push(['done']); }
 };
@@ -938,6 +961,7 @@ Team.prototype.tick = function (inp, dt, now) {
     }
     const RA = R.slice(); RA[this.slot] = mine;
     W.now = now; W.lag = this.selfDelay;
+    W.who = this.slots.filter(s => s === this.slot || (this.ghosts[s] && this.ghosts[s].present));   // 색 단추의 주인을 정할 때 쓰는 지금 팀원 (자리 번호 순)
     if (this.TS.ph >= PH_READY && this.TS.ph <= PH_CLEAR) simWorld(W, RA, dt);
   } else {
     const s = this.ws.sample(now);
@@ -982,7 +1006,7 @@ Team.prototype.send = function (now) {
   const TS = this.TS, o = this.W.pack(), key = JSON.stringify(o) + TS.ph + TS.stage + ':' + TS.run + ':' + TS.ck + ':' + TS.n;
   if (now - this.lastWT >= (key === this.lastO ? 250 : this.wIvl)) {
     this.lastO = key; this.lastWT = now;
-    this.out.push(['w', { lk: this.lkey, e: this.epoch, q: ++this.wseq, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100)], cl: TS.cl, sk: TS.sk, o: o }]);
+    this.out.push(['w', { lk: this.lkey, e: this.epoch, q: ++this.wseq, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100), TS.wp | 0], cl: TS.cl, sk: TS.sk, o: o }]);
   }
   if (this.spect && now - this.lastVT >= this.vIvl) {
     this.lastVT = now;
@@ -992,7 +1016,7 @@ Team.prototype.send = function (now) {
     st[this.slot] = m.stat.map(r1);
     for (const s of this.slots) if (s !== this.slot) { const g = this.ghosts[s]; if (g.vis) pl.push([s, r0(g.x), r0(g.y), fo(g.cur || g.rep)]); if (g.stat) st[s] = g.stat; }
     let present = 0; for (const s of this.slots) if (s === this.slot || this.ghosts[s].present) present |= 1 << s;
-    this.out.push(['v', { lk: this.lkey, k: this.team, a: this.slot, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100)], cl: TS.cl, sk: TS.sk, o: o, pl: pl, st: st, pr: present }]);
+    this.out.push(['v', { lk: this.lkey, k: this.team, a: this.slot, t: r0(now), ts: [TS.stage, TS.run, TS.ph, r0(TS.tm), TS.ck, TS.n, r0(TS.cd * 100), TS.wp | 0], cl: TS.cl, sk: TS.sk, o: o, pl: pl, st: st, pr: present }]);
   }
 };
 /* 그릴 사람들 */
@@ -1034,7 +1058,7 @@ Viewer.prototype.update = function (now) {
 Viewer.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH_PLAY && now - this.last < 3000 ? TS.tm + (now - this.tmAt) : TS.tm; };
 Viewer.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
 
-const VERSION = 8;                               // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
+const VERSION = 9;                               // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
 const YC = { VERSION, T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
   opt, lseed, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
 if (typeof module !== 'undefined' && module.exports) module.exports = YC; else root.YC = YC;

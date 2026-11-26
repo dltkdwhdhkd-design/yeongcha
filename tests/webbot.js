@@ -4,7 +4,7 @@
    e2e.js가 window.__ycSrc = { bot, scripts } 와 함께 페이지에 넣는다. */
 (function () {
 'use strict';
-function load(src) { const module = { exports: {} }; new Function('module', 'exports', 'require', src)(module, module.exports, function () { return {}; }); return module.exports; }
+function load(src) { const module = { exports: {} }; new Function('module', 'exports', 'require', src)(module, module.exports, function (p) { return /core/.test(p) ? window.YC : {}; }); return module.exports; }   // ai.js는 require('./core.js')로 YC를 찾는다
 const st = { key: '', bot: null, err: null, log: [], shared: {}, at: {}, hooked: false, Bot: null, scripts: null };
 function boot() { if (!st.Bot) { st.Bot = load(window.__ycSrc.bot); st.scripts = load(window.__ycSrc.scripts).scripts; } }
 function hook() {

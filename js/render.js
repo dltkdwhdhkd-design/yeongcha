@@ -91,8 +91,10 @@ function drawBox(c, o, n) {
   }
 }
 const BTN_COL = { sw: ['#ffd43b', '#fab005'], vent: ['#ced4da', '#868e96'], heat: ['#ff8787', '#f03e3e'], cool: ['#a5d8ff', '#339af0'], water: ['#a5d8ff', '#1c7ed6'] };
+let curCols = null;                                        // 그리는 동안의 팀원 색 (자리 번호 → 색 번호)
 function drawBtn(c, o, n, t) {
   if (o.style === 'hide') return;
+  if (o.only !== undefined) { drawOwnBtn(c, o, t); return; }
   if (o.minN && n < o.minN) { box(c, o.x + 2, o.y - 4, o.w - 4, 4, 2, '#dee2e6', '#adb5bd', 1.2); return; }    // 이 인원에서는 필요 없는 단추
   const need = YC.needOf(o.need, n), up = o.on ? 2 : 6, st = BTN_COL[o.style];
   box(c, o.x - 3, o.y - 3, o.w + 6, 5, 2, '#5c636b', INK, 1.5);
@@ -106,6 +108,19 @@ function drawBtn(c, o, n, t) {
   }
   if (o.boxOnly) { const cx = o.x + o.w / 2; box(c, cx - 8, o.y - 30, 16, 14, 3, '#e0a660', INK, 1.5); c.strokeStyle = INK; c.lineWidth = 1; c.beginPath(); c.moveTo(cx - 8, o.y - 23); c.lineTo(cx + 8, o.y - 23); c.stroke(); }   // 상자만 눌리는 단추
   if (need > 1 || o.load) { const s = 9, gap = 12, x0 = o.x + o.w / 2 - (need - 1) * gap / 2; for (let i = 0; i < need; i++) pip(c, x0 + i * gap, o.y - 14, s, i < o.load ? '#37b24d' : '#f1f3f5', INK); }
+}
+/* 색 단추: 그 색 친구만 누를 수 있다. 위에 그 친구 얼굴(색·머리 장식)을 띄운다 */
+function drawOwnBtn(c, o, t) {
+  const s = o.own, ci = s >= 0 ? (curCols ? curCols[s] : s) : -1, col = ci >= 0 ? COL[ci % 6] : '#ced4da', dk = ci >= 0 ? COLD[ci % 6] : '#868e96', up = o.on ? 2 : 6;
+  box(c, o.x - 3, o.y - 3, o.w + 6, 5, 2, '#5c636b', INK, 1.5);
+  box(c, o.x + 2, o.y - 3 - up, o.w - 4, up + 1, 2, o.on ? dk : col, INK, 1.5);
+  c.fillStyle = 'rgba(255,255,255,.55)'; for (let k = 0; k < 3; k++) c.fillRect(o.x + 10 + k * (o.w - 20) / 2 - 3, o.y - 2 - up, 6, 2);
+  const cx = o.x + o.w / 2, cy = o.y - 30 + (o.on ? 0 : Math.sin(t * 4) * 2);
+  c.save(); c.translate(cx, cy + 14); c.scale(0.62, 0.62);
+  rr(c, -12, -28, 24, 25, 9); c.fillStyle = col; c.fill(); c.strokeStyle = INK; c.lineWidth = 2.5; c.stroke();
+  if (s >= 0) { c.fillStyle = '#fff'; c.beginPath(); c.ellipse(-4.5, -17, 3.6, 4.4, 0, 0, TAU); c.ellipse(4.5, -17, 3.6, 4.4, 0, 0, TAU); c.fill(); c.fillStyle = INK; c.beginPath(); c.arc(-4, -16.5, 1.9, 0, TAU); c.arc(5, -16.5, 1.9, 0, TAU); c.fill(); topping(c, s, col, dk); }
+  else label(c, '?', 0, -15, 16, '#fff', INK);
+  c.restore();
 }
 function drawDoor(c, o, t) {
   const h = o.h * (1 - o.open);
@@ -365,7 +380,7 @@ Renderer.prototype.draw = function (v) {
   if (!this.cache || this.cdef !== W.def || this.csc !== sc) this.buildCache(W);   // 판(씨앗·난이도)마다 땅 모양이 다르므로 판 자체로 맞춘다
   c.drawImage(this.cache, 0, 0, this.cache.width / sc, this.cache.height / sc);
   if (W.n <= 2) for (let yy = 0; yy < W.rows; yy++) for (let xx = 0; xx < W.cols; xx++) { const q = W.ch(xx, yy); if ((q === 's' && W.n <= 1) || q === 'd') { box(c, xx * T + 1, yy * T + 1, T - 2, T - 2, 6, '#d0ebff', '#4dabf7', 2.5); label(c, q === 's' ? '혼자' : '둘이', xx * T + 16, yy * T + 16, 10, '#1c7ed6', null); } }
-  const n = W.n, O = W.objs;
+  const n = W.n, O = W.objs; curCols = v.cols || null;
   for (const o of O) if (o.type === 'exit') drawExit(c, o, t); else if (o.type === 'flag') drawFlag(c, o, v.ck >= o.idx); else if (o.type === 'sign') drawSign(c, o, n);
     else if (o.type === 'wire') drawWire(c, o, W, t); else if (o.type === 'cell') drawCell(c, o); else if (o.type === 'bulb') drawBulb(c, o, W, t);
     else if (o.type === 'mirror') drawMirror(c, o, W); else if (o.type === 'sensor') drawSensor(c, o, t); else if (o.type === 'beam') drawSource(c, o);
@@ -381,7 +396,6 @@ Renderer.prototype.draw = function (v) {
     guy(c, p, v.cols ? v.cols[p.slot] : p.slot, t, { strain: strain });
   }
   for (const o of O) if (o.type === 'key') drawKey(c, o, t);
-  if (v.hint) drawHint(c, v.hint, P.find(p => p.slot === v.me), t, cx, vw);
   // 물 (사람 위에 덮어 그려 잠긴 것처럼)
   for (const o of W.waters) {
     c.fillStyle = 'rgba(64,160,255,.5)'; c.fillRect(o.x, o.y + 3, o.w, o.h - 3);
@@ -389,6 +403,9 @@ Renderer.prototype.draw = function (v) {
     for (let x = o.x; x <= o.x + o.w; x += 8) c.lineTo(x, o.y + 3 + Math.sin(x / 19 + t * 2.4) * 2.2);
     c.lineTo(o.x + o.w, o.y + 7); for (let x = o.x + o.w; x >= o.x; x -= 8) c.lineTo(x, o.y + 6.5 + Math.sin(x / 19 + t * 2.4) * 2.2); c.closePath(); c.fill();
   }
+  // 불 꺼진 방 (하드): 사람 둘레와 빛을 내는 것만 보인다
+  if (W.def.dark && !v.plain && v.me >= 0) { this.dark(c, W, P, t, cx, cy); c.setTransform(sc, 0, 0, sc, 0, 0); c.translate(-cx, -cy); }
+  if (v.hint) drawHint(c, v.hint, P.find(p => p.slot === v.me), t, cx, vw);
   // 이름표
   if (!v.plain || v.names) for (const p of P) {
     if (p.slot === v.me) { c.fillStyle = '#fff'; c.strokeStyle = INK; c.lineWidth = 2; c.beginPath(); const yy = p.y - 16 + Math.sin(t * 5) * 1.5; c.moveTo(p.x + 6, yy - 7); c.lineTo(p.x + 18, yy - 7); c.lineTo(p.x + 12, yy); c.closePath(); c.fill(); c.stroke(); }
@@ -417,6 +434,32 @@ Renderer.prototype.draw = function (v) {
     }
   }
   c.setTransform(1, 0, 0, 1, 0, 0);
+};
+/* 어둠: 화면을 덮고, 사람·켜진 전구·불·빛줄기·켜진 감지기 둘레만 구멍을 낸다. 빛줄기는 어둠 위에 다시 그려 빛나 보이게 */
+Renderer.prototype.dark = function (c, W, P, t, cx, cy) {
+  const cv = this.dk || (this.dk = document.createElement('canvas')), sc = this.sc;
+  if (cv.width !== this.cv.width || cv.height !== this.cv.height) { cv.width = this.cv.width; cv.height = this.cv.height; }
+  const d = cv.getContext('2d');
+  d.setTransform(1, 0, 0, 1, 0, 0); d.globalCompositeOperation = 'source-over'; d.clearRect(0, 0, cv.width, cv.height);
+  d.fillStyle = 'rgba(8,10,26,.94)'; d.fillRect(0, 0, cv.width, cv.height);
+  d.globalCompositeOperation = 'destination-out'; d.setTransform(sc, 0, 0, sc, -cx * sc, -cy * sc);
+  const vw = this.vw, vh = this.vh;
+  const hole = (x, y, r, a) => { if (x + r < cx || x - r > cx + vw || y + r < cy || y - r > cy + vh) return; const g = d.createRadialGradient(x, y, r * 0.3, x, y, r); g.addColorStop(0, 'rgba(0,0,0,' + a + ')'); g.addColorStop(1, 'rgba(0,0,0,0)'); d.fillStyle = g; d.beginPath(); d.arc(x, y, r, 0, TAU); d.fill(); };   // 화면 밖은 건너뛴다
+  for (const p of P) hole(p.x + PW / 2, p.y + PH / 2, 128 + Math.sin(t * 3 + p.slot) * 3, 1);
+  for (const o of W.objs) {
+    if (o.type === 'bulb' && YC.linkOn(W, o)) hole(o.x, o.y, 250, 1);
+    else if (o.type === 'sensor' && (o.on || o.lit)) hole(o.x + 16, o.y + 16, 80, 0.9);
+    else if (o.type === 'beam') hole(o.x + 16, o.y + 16, 56, 0.8);
+    else if (o.type === 'exit') hole(o.x + o.w / 2, o.y + o.h / 2, 70, 0.55);
+    else if (o.type === 'key' && !o.used) hole(o.x + 11, o.y + 11, 46, 0.7);
+  }
+  for (const f of W.fires) if (f.out < 0.6) hole(f.x + f.w / 2, f.y + f.h / 2, 150, 1 - f.out);
+  const beams = W.beams.map(src => YC.traceBeam(W, src).pts);
+  for (const pts of beams) for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.max(1, Math.round(L / 36)); for (let j = 0; j <= k; j++) hole(a[0] + (b[0] - a[0]) * j / k, a[1] + (b[1] - a[1]) * j / k, 44, 0.75); }
+  c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(cv, 0, 0);
+  c.setTransform(sc, 0, 0, sc, -cx * sc, -cy * sc);
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  for (const pts of beams) for (const [lw, col] of [[10, 'rgba(255,236,153,.35)'], [4, 'rgba(255,212,59,.95)'], [1.5, '#fff']]) { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke(); }
 };
 /* 대기실·결과 화면의 캐릭터 얼굴 */
 Renderer.face = function (canvas, slot, ci) {

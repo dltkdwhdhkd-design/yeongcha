@@ -113,7 +113,8 @@ function onEvent(e, now, T) {
     case 'done': A.play('done'); break;
     case 'stage':
       R.cam.set = false; R.fx.length = 0; G.voteUntil = 0;
-      if (e[1] === G.stageSeen) toast('처음부터 다시!');
+      if (e[2]) { toast('누가 빠졌어요! 다 같이 깃발부터 다시'); A.play('die'); }
+      else if (e[1] === G.stageSeen) toast('처음부터 다시!');
       else if (e[1] > 0 && G.stageSeen === e[1] - 1 && T.TS.sk[e[1] - 1]) toast('선생님이 다음 스테이지로 넘겼어요 (+1분 30초)');
       G.stageSeen = e[1]; break;
     case 'btn': A.play('btn'); break;
@@ -414,7 +415,7 @@ function hostLobby() {
   YC.order.forEach((id, i) => { const b = el('button', 'chk' + (H.stages.indexOf(id) >= 0 ? ' on' : ''), (i + 1) + ' ' + YC.build(id).name); b.onclick = () => { const at = H.stages.indexOf(id); if (at >= 0) { if (H.stages.length > 1) H.stages.splice(at, 1); } else H.stages = YC.order.filter(x => x === id || H.stages.indexOf(x) >= 0); H.dirty = true; hostBeat(); }; cs.append(b); });
   const dfb = $('hc-diff'); dfb.textContent = '';
   YC.DIFF.forEach((nm, k) => { const b = el('button', 'chk' + (H.df === k ? ' on' : '') + (k ? ' hd' : ''), nm); b.onclick = () => { if (H.df === k) return; H.df = k; store.set('yc-hdiff', String(k)); A.play('ui'); H.dirty = true; hostBeat(); }; dfb.append(b); });
-  $('hc-dnote').textContent = H.df ? '하드: 스테이지마다 장치가 더 붙어요 (셋이 탑 쌓기, 쇠 추, 합선 스위치, 두 번 발사…). 맞춰 뛰는 시간은 노말과 같아요' : '노말: 처음 하는 반에 알맞아요';
+  $('hc-dnote').textContent = H.df ? '하드: 노말에 더해, 한 명이라도 빠지면 다 같이 그 방 깃발부터 다시(연대 책임) · 정해진 색 친구만 누를 수 있는 단추 · 불 꺼진 방. 맞춰 뛰는 시간은 노말과 같아요' : '노말: 장치가 여럿 붙은 판 (셋이 탑 쌓기, 쇠 추, 합선 스위치, 함정 판…)';
   const box = $('hc-teams'); box.textContent = '';
   const now = performance.now();
   for (let k = 0; k < Math.max(T, 1); k++) {
