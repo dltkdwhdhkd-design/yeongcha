@@ -141,7 +141,7 @@ function hud(now) {
   $('h-total').textContent = T.stages.length > 1 && TS.ph !== YC.PH_DONE ? '합계 ' + fmt(T.total(now)) : '';
   if (G.toastT && now > G.toastT) { $('h-toast').hidden = true; G.toastT = 0; }
   if (!G.solo && T.mism > 20) { toast('판이 서로 달라요. 새로 받아 오는 중…'); freshReload(); }
-  if (G.practice && G.practice.err && G.errShown !== G.practice.err) { G.errShown = G.practice.err; toast('AI 친구가 헷갈렸어요. ↺(R)을 누르면 처음부터 다시 해요'); G.toastT = now + 6000; }
+  if (G.practice && G.practice.err && G.errShown !== G.practice.err) { G.errShown = G.practice.err; toast(G.practice.fatal ? '이대로는 더 못 깨요. 다 같이 처음부터 다시 해요' : 'AI 친구가 헷갈렸어요. ↺(R)을 누르면 처음부터 다시 해요'); G.toastT = now + 6000; }
   // 팀원
   const key = T.slots.join(',') + '|' + T.slots.map(s => s === T.slot ? 1 : (T.ghosts[s].present ? (T.ghosts[s].rep && T.ghosts[s].rep.fin && T.ghosts[s].rep.sr === T.sr() ? 2 : 1) : 0)).join('') + (me.fin ? 'f' : '');
   if (key !== G.matesKey) {

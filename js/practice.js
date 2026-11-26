@@ -9,21 +9,28 @@ const NAMES = ['나', '콩이', '별이', '달이', '솔이', '해리'];
 /* 0번 자리(사람): 키를 대신 누르지 않고, 할 일을 알려 준 뒤 사람이 해낼 때까지 기다린다 */
 function Guide(sim, i) { Bot.call(this, sim, i); this.hint = null; }
 Guide.prototype = Object.create(Bot.prototype);
-Guide.prototype.tell = function (h) { if (h && (!this.hint || this.hint.k !== h.k || this.hint.x !== h.x)) this.hintAt = performance.now(); this.hint = h; };
+/* 알려 줄 일이 바뀔 때만 시계를 새로 잰다 (AI가 할 일을 틈틈이 다시 골라도, 같은 일이면 '6초 넘게 헤맴'이 이어진다) */
+Guide.prototype.tell = function (h) {
+  if (h && h.x !== undefined) h = Object.assign({}, h, { x: Math.round(h.x / 16) * 16 });
+  const same = (a, b) => a && b && a.k === b.k && a.x === b.x && a.dir === b.dir;
+  if (h && !same(h, this.hint) && !(same(h, this.last) && performance.now() - this.lastT < 1500)) this.hintAt = performance.now();
+  if (!h && this.hint) { this.last = this.hint; this.lastT = performance.now(); }
+  this.hint = h;
+};
 Guide.prototype.drive = function () {
   if (!this.gen || this.done) return;
   try { const r = this.gen.next(); if (r.done) { this.done = true; this.hint = null; } }
   catch (e) { this.done = true; this.err = e; this.hint = null; }
+  this.me.ride = true;                                                                   // 사람은 언제든 친구 머리 위에 설 수 있다 (실제 게임처럼)
 };
-Guide.prototype.until = function* (fn) { const h = this.hint; if (h && h.k !== 'wait') this.tell(null); while (!fn()) yield; };
-Guide.prototype.walkTo = function* (x, tol) { const t = Math.max(tol || 2, 22); this.tell({ k: 'go', x: x }); while (!(Math.abs(this.cx() - x) <= t && this.me.gr)) yield; this.tell(null); };
-Guide.prototype.hold = function* (dir, fn) { this.tell({ k: 'push', dir: dir }); while (!fn()) yield; this.tell(null); };
-Guide.prototype.jump = function* (x) {
+Guide.prototype.until = function* (fn) { const h = this.hint; if (h && h.k !== 'wait' && h.k !== 'idle') this.tell(null); while (!fn()) yield; };
+Guide.prototype.walkTo = function* (x, tol, timeout, stop) { const t = Math.max(tol || 2, 22); this.tell({ k: 'go', x: x }); while (!(Math.abs(this.cx() - x) <= t && this.me.gr)) { if (stop && stop()) return; yield; } };
+Guide.prototype.hold = function* (dir, fn) { this.tell({ k: 'push', dir: dir }); while (!fn()) yield; };
+Guide.prototype.jump = function* (x, tol, stop) {
   this.tell({ k: 'jump', x: x }); let air = false;
-  for (let t = 0; t < 60 * 20; t++) { if (!this.me.gr) air = true; else if (air) break; yield; }
-  this.tell(null);
+  for (let t = 0; t < 60 * 20; t++) { if (!this.me.gr) air = true; else if (air) break; if (stop && stop()) return; yield; }
 };
-Guide.prototype.enter = function* () { this.tell({ k: 'door' }); while (!this.me.fin) yield; this.tell(null); };
+Guide.prototype.enter = function* () { this.tell({ k: 'door' }); while (!this.me.fin && this.me.atExit) yield; };   // 문 앞을 떠나면 다시 '여기로'
 
 const P = { on: false, teams: [], bots: [], q: [], key: '', sim: null, err: '', names: {}, errT: 0 };
 /* G: app.js의 게임 상태. opt: { stages, nAI, startGame } */
@@ -60,12 +67,13 @@ P.step = function (now) {
   q.length = w;
   // 스테이지가 바뀌거나 처음부터 다시 하면 대본을 새로 건다
   const H = P.teams[0], key = H.TS.stage + ':' + H.TS.run;
-  if (key !== P.key && H.W) { P.key = key; P.err = ''; const sc = AI.scripts[H.stages[H.TS.stage]]; if (sc) sc(P.sim); for (let s = 1; s < P.teams.length; s++) P.teams[s].me.vote = 0; }
+  if (key !== P.key && H.W) { P.key = key; P.err = ''; P.fatal = false; const sc = AI.scripts[H.stages[H.TS.stage]]; if (sc) sc(P.sim); for (let s = 1; s < P.teams.length; s++) P.teams[s].me.vote = 0; }
   P.bots[0].drive();
   for (let s = 1; s < P.teams.length; s++) {
     const tm = P.teams[s], b = P.bots[s];
     b.drive();
-    if (b.err && !P.err) { P.err = b.err.message; P.errT = now; }
+    if (b.err && !P.err) { P.err = b.err.message; P.errT = now; P.fatal = !!b.err.fatal; }
+    if (P.fatal && P.err) H.me.vote = 1;                                                    // 더는 깰 수 없게 꼬였다: 나 대신 ↺를 눌러 다 같이 처음부터
     tm.me.vote = P.err || H.me.vote ? 1 : 0;                                               // 내가 ↺를 누르거나 AI가 길을 잃으면 다 같이 처음부터
     tm.tick(b.inp, 1 / 60, now);
     tm.ev.length = 0;

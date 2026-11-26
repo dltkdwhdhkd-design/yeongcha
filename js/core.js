@@ -29,6 +29,7 @@ const ov = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.
 function needOf(spec, n) {
   n = max(1, n | 0);
   if (typeof spec === 'number') return clamp(spec, 1, n);
+  if (Array.isArray(spec)) return clamp(spec[min(n, spec.length - 1)] | 0 || 1, 1, n);   // 팀 인원마다 정한 수 (spec[n])
   if (spec === 'w2') return 2;                  // 인원과 상관없이 무게 2 (쇠 상자 하나)
   switch (spec) {
     case 'all': return n;
@@ -526,7 +527,7 @@ function ridersOn(R, slot) { let c = 0; const tw = makeTotals(R); for (let j = 0
 
 /* 빛: 광원에서 칸 단위로 나아가다 거울에서 꺾이고, 벽·닫힌 문에서 멈춘다. 감지기에 닿으면 hit */
 const BDX = [1, 0, -1, 0], BDY = [0, 1, 0, -1];
-function mirrorFlip(W, m) { if (m.soloOk && W.n <= 1) return m.ok | 0; return m.opt ? (m.d || 0) : ((m.d || 0) ^ (linkOn(W, m) ? 1 : 0)) & 1; }   // 0: '/'  1: '\'  (opt: 연결이 켜질 때만 나타나는 거울)
+function mirrorFlip(W, m) { if ((m.soloOk && W.n <= 1) || (m.okN && W.n <= m.okN)) return m.ok | 0; return m.opt ? (m.d || 0) : ((m.d || 0) ^ (linkOn(W, m) ? 1 : 0)) & 1; }   // 0: '/'  1: '\'  (opt: 연결이 켜질 때만 나타나는 거울)   // okN: 팀이 이 인원 이하면 처음부터 맞는 쪽
 function mirrorOn(W, m) { return !m.opt || linkOn(W, m); }
 function traceBeam(W, src) {
   let cx = floor(src.x / T), cy = floor(src.y / T), dir = src.dir | 0; const pts = [[cx * T + 16, cy * T + 16]]; let hit = null;
@@ -552,7 +553,8 @@ function linkOn(W, o) {
 }
 
 function raftCap(o, n) { return n <= 1 ? 1 : (o.cap || 3); }
-function launchNeed(n, m, sub) { return min(m || 3, max(1, n - 1 - (sub || 0))); }   // sub: 다른 일을 맡아 빠지는 사람 수                                 // 시소 발사: 동시에 뛰어내려야 하는 사람 수
+const subOf = (s, n) => Array.isArray(s) ? (s[min(n, s.length - 1)] | 0) : (s | 0);
+function launchNeed(n, m, sub) { return min(m || 3, max(1, n - 1 - subOf(sub, n))); }   // sub: 다른 일을 맡아 빠지는 사람 수                                 // 시소 발사: 동시에 뛰어내려야 하는 사람 수
 
 /* '동시에' 판정: 실제로 SYNC_WIN(ms) 안에 뛰었으면 동시. 통신이 느릴수록 늦게 오는 것을 조금 더 기다린다 */
 const SYNC_WIN = 380;
@@ -599,11 +601,11 @@ function simWorld(W, R, dt) {
         if (o.relT > 0 && (W.now || 0) - o.rOpen >= syncWait(W)) {                       // 늦게 도착한 것까지 기다렸다가, 실제로 거의 같은 때 뛴 사람 수만큼 튕긴다
           const t0 = Math.min.apply(null, o.rel); let c = 0; for (const t of o.rel) if (t - t0 <= SYNC_WIN) c++;
           const rem = max(1, (o.full || w) - c);                                       // 남은 무게는 '뛰기 직전 무게 - 함께 뛴 사람'으로 센다 (통신이 늦어 뛴 사람이 벌써 다시 내려앉은 것으로 보여도 손해 보지 않게)
-          if (w >= 1 && c >= 1) { o.kq++; o.kp = r2(min(1, c / max(1, n - 1)) / Math.sqrt(rem)); o.comp = max(0, tgt - 8); }
+          if (w >= 1 && c >= 1) { o.kq++; o.kp = r2(min(1, c / max(1, n - 1 - subOf(o.nsub, n))) / Math.sqrt(rem)); o.comp = max(0, tgt - 8); }   // nsub: 다른 일을 맡아 빠지는 사람 수만큼 덜 뛰어도 된다
           o.rel.length = 0; o.relT = 0;
         }
         if (!(o.relT > 0)) o.full = w;                                                   // 뛰기 전까지의 무게
-      } else {                                                                           // 저울: 딱 맞는 무게가 잠깐 유지되면 켜진다
+      } else if (o.minN && n < o.minN) { o.ok = 1; o.want = 0; } else {                   // 저울: 딱 맞는 무게가 잠깐 유지되면 켜진다 (minN: 인원이 적으면 필요 없는 저울)
         const want = needOf(o.eq, n), st = o.stabT || 0.25;                                // st: 딱 맞은 채로 버텨야 하는 시간 (하드는 더 길다)
         if (w === want) o.stab = min(st + 1, o.stab + dt); else o.stab = 0;
         if (n <= 1 && o.stab > st) o.lat = 1;
@@ -620,7 +622,8 @@ function simWorld(W, R, dt) {
   for (const b of W.btns) {
     if (b.minN && n < b.minN) { b.on = 1; b.load = 0; continue; }                     // 팀 인원이 적으면 이 단추는 필요 없다 (늘 켜진 것으로)
     let w = b.boxOnly ? 0 : (pl[b.id] || 0);
-    for (const x of W.boxes) if (!(x.rs > 0) && x.gr && abs(x.y + x.h - b.y) < 3 && x.x < b.x + b.w - 6 && x.x + x.w > b.x + 6) w += x.wt + (b.boxOnly ? 0 : (pl[x.id] || 0));
+    const ovm = b.ov || 6;                                                                // ov: 상자가 단추와 이만큼은 겹쳐야 눌린다
+    for (const x of W.boxes) if (!(x.rs > 0) && x.gr && abs(x.y + x.h - b.y) < 3 && x.x < b.x + b.w - ovm && x.x + x.w > b.x + ovm) w += x.wt + (b.boxOnly ? 0 : (pl[x.id] || 0));
     const on = w >= needOf(b.need, n);
     if (b.latchT) { b.hold = on ? b.hold + dt : 0; if (b.hold >= b.latchT) b.lat = 1; }   // 한동안 눌린 채로 있으면 딸깍 고정
     else if ((b.latch || (b.soloLatch && n <= 1) || (b.latchN && n <= b.latchN)) && on) b.lat = 1;   // latchN: 팀이 이 인원 이하면 한 번 밟으면 고정
@@ -629,9 +632,9 @@ function simWorld(W, R, dt) {
   for (const z of W.relays) { if (z.mom) { z.on = linkOn(W, z) ? 1 : 0; continue; } z.hold = linkOn(W, z) ? z.hold + dt : 0; if (z.hold >= (z.latchT || 1)) z.on = 1; }   // mom: 고정되지 않는 이음 (조건이 맞는 동안만)
   for (const z of W.sensors) z.lit = 0;
   for (const src of W.beams) { const r = traceBeam(W, src); if (r.hit) r.hit.lit = 1; }
-  for (const z of W.sensors) { z.hold = z.lit ? z.hold + dt : 0; if (z.hold >= (z.latchT || 0.6)) z.on = 1; }   // 빛이 잠깐 머물면 딸깍 켜진 채로
-  for (const d of W.doors) d.open = approach(d.open, linkOn(W, d) ? 1 : 0, dt * (d.rate || (d.fast ? 4 : 2.2)));
-  for (const f of W.fires) f.out = approach(f.out, linkOn(W, f) || (f.stay && f.out >= 1) ? 1 : 0, dt * (f.rate || 1.6));   // 불: 연결된 조건이 맞으면 꺼진다 (stay: 한 번 꺼지면 그대로)
+  for (const z of W.sensors) { z.hold = z.lit ? z.hold + dt : 0; if (z.mom) z.on = z.hold >= (z.latchT || 0.1) ? 1 : 0; else if (z.hold >= (z.latchT || 0.6)) z.on = 1; }   // mom: 빛이 닿아 있는 동안만 (아니면 잠깐 머물면 딸깍 켜진 채로)
+  for (const d of W.doors) { const tg = linkOn(W, d) ? 1 : 0; d.open = approach(d.open, tg, dt * (tg < d.open && d.rc ? d.rc : (d.rate || (d.fast ? 4 : 2.2)))); }   // rc: 닫히는(다시 어는) 빠르기
+  for (const f of W.fires) { const tg = linkOn(W, f) || (f.stay && f.out >= 1) ? 1 : 0; f.out = approach(f.out, tg, dt * (tg < f.out && f.rc ? f.rc : (f.rate || 1.6))); }   // 불: 연결된 조건이 맞는 동안 꺼져 있다 (stay: 한 번 꺼지면 그대로, rc: 다시 붙는 빠르기)
 
   for (const o of W.saws) {
     if (o.solo && n <= 1) { o.th = approach(o.th, 0, dt * 2); o.om = 0; o.pend.length = 0; continue; }   // 혼자 연습: 판을 수평으로 묶어 둔다
@@ -639,7 +642,7 @@ function simWorld(W, R, dt) {
     for (let i = 0; i < R.length; i++) {
       const r = R[i]; if (!r || !r.on) continue;
       if (r.gRef === o.id) { const w = tw(i), s = clamp(r.gOff, -o.L, o.L); tq += w * s; I += w * s * s; if (s < 0) lw += w; else rw += w; }
-      if (r.ldObj === o.id && r.ldSeq !== (o.seen[i] || 0)) { o.seen[i] = r.ldSeq; if (r.ldV >= 200) o.pend.push({ s: r.ldS, v: r.ldV }); }
+      if (r.ldObj === o.id && r.ldSeq !== (o.seen[i] || 0)) { o.seen[i] = r.ldSeq; if (r.ldV >= 200) o.pend.push({ s: r.ldS, v: r.ldV, i: i }); }
     }
     if (o.pend.length && o.win <= 0) { o.win = 0.32; o.winTh = o.th; }
     if (o.win > 0) {
@@ -647,8 +650,10 @@ function simWorld(W, R, dt) {
       if (o.win <= 0) {                                                                  // 뛰어내린 힘을 모아 반대쪽을 튕겨 올린다
         let pr = 0, pL = 0;
         for (const p of o.pend) { const v = clamp(p.v / o.vref, 0, 1), c = v * v * clamp(abs(p.s) / (0.4 * o.L), 0, 1); if (p.s > 0) pr += c; else pL += c; }
-        o.pend.length = 0; o.win = 0;
-        const side = pr >= pL ? 1 : -1, pw = max(pr, pL), wasUp = side > 0 ? o.winTh < 0.3 * o.lo : o.winTh > 0.3 * o.hi, riders = side > 0 ? lw : rw;
+        const who = o.pend.map(p => p.i); o.pend.length = 0; o.win = 0;
+        const side = pr >= pL ? 1 : -1, pw = max(pr, pL), wasUp = side > 0 ? o.winTh < 0.3 * o.lo : o.winTh > 0.3 * o.hi;
+        let riders = 0;                                                                // 반대쪽에 탄 사람 (방금 뛰어내린 사람 자신은 빼고: 제 힘으로 저를 쏘아 올릴 수는 없다)
+        for (let i = 0; i < R.length; i++) { const r = R[i]; if (r && r.on && r.gRef === o.id && sign(r.gOff) === -side && who.indexOf(i) < 0) riders += tw(i); }
         if (wasUp && riders > 0 && pw > 0.15) { o.kq++; o.ks = -side; o.kp = r2(min(1, pw / launchNeed(n, o.nmax, o.nsub))); o.om = side * 11; }
       }
     }
@@ -1029,7 +1034,7 @@ Viewer.prototype.update = function (now) {
 Viewer.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH_PLAY && now - this.last < 3000 ? TS.tm + (now - this.tmAt) : TS.tm; };
 Viewer.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
 
-const VERSION = 7;                               // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
+const VERSION = 8;                               // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
 const YC = { VERSION, T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
   opt, lseed, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
 if (typeof module !== 'undefined' && module.exports) module.exports = YC; else root.YC = YC;

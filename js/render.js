@@ -104,6 +104,7 @@ function drawBtn(c, o, n, t) {
     else if (o.style === 'vent') { c.strokeStyle = '#495057'; c.lineWidth = 1.5; for (let k = 0; k < 4; k++) { c.beginPath(); c.moveTo(o.x + 10 + k * (o.w - 20) / 3, o.y - 6); c.lineTo(o.x + 10 + k * (o.w - 20) / 3, o.y - 2); c.stroke(); } if (!o.on) for (let k = 0; k < 3; k++) { const yy = cy - ((t * 30 + k * 9) % 26); c.strokeStyle = 'rgba(134,142,150,.6)'; c.beginPath(); c.arc(cx - 8 + k * 8, yy, 3, 0, TAU); c.stroke(); } }
     else if (o.style === 'water') { c.fillStyle = '#1c7ed6'; c.fillRect(cx - 3, cy - 10, 6, 10); c.fillRect(cx - 3, cy - 10, 12, 5); }
   }
+  if (o.boxOnly) { const cx = o.x + o.w / 2; box(c, cx - 8, o.y - 30, 16, 14, 3, '#e0a660', INK, 1.5); c.strokeStyle = INK; c.lineWidth = 1; c.beginPath(); c.moveTo(cx - 8, o.y - 23); c.lineTo(cx + 8, o.y - 23); c.stroke(); }   // 상자만 눌리는 단추
   if (need > 1 || o.load) { const s = 9, gap = 12, x0 = o.x + o.w / 2 - (need - 1) * gap / 2; for (let i = 0; i < need; i++) pip(c, x0 + i * gap, o.y - 14, s, i < o.load ? '#37b24d' : '#f1f3f5', INK); }
 }
 function drawDoor(c, o, t) {
@@ -146,6 +147,7 @@ function drawHint(c, h, me, t, cx, vw) {
   } else if (h.k === 'push') say(h.dir > 0 ? '→ 밀어요!' : '← 밀어요!');
   else if (h.k === 'door') say('↓ 문으로!');
   else if (h.k === 'wait') say('그대로 서 있어요!');
+  else if (h.k === 'idle') say('잠깐 기다려요');
 }
 function drawWire(c, o, W, t) {
   const on = YC.linkOn(W, o), P = o.pts;
