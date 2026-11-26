@@ -438,7 +438,9 @@ $('hc-auto').onclick = () => { H.manual = false; assignAll(); hostBeat(); };
 $('hc-shuffle').onclick = () => { const a = [...H.players.values()]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i].order; a[i].order = a[j].order; a[j].order = t; } H.manual = false; assignAll(); hostBeat(); };
 $('hc-start').onclick = () => {
   if (!H.players.size) return;
-  if (H.mix) { const a = YC.order.filter(id => H.stages.indexOf(id) >= 0); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } H.stages = a; }   // 판마다 스테이지 순서를 섞는다
+  { const a = YC.order.filter(id => H.stages.indexOf(id) >= 0);                        // 지난 판에 섞인 순서가 남아 있으니 늘 원래 순서에서 시작한다
+    if (H.mix) for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; }   // 판마다 스테이지 순서를 섞는다
+    H.stages = a; }
   A.play('go'); H.ph = 'play'; H.run = Date.now() % 1000000; H.t0 = Date.now(); H.skip = {}; H.viewers = {}; H.vr = {}; H.final = null; H.sel = null; H.dirty = true; hostBeat(); setTimeout(hostSay, 300); setTimeout(hostSay, 700);
 };
 $('hp-end').onclick = () => { if (!confirm('지금 끝내고 결과를 볼까요?')) return; H.ph = 'end'; H.final = rankNow(); H.finalStat = collectStats(); H.finalSplits = collectSplits(); H.dirty = true; hostBeat(); A.play('done'); };

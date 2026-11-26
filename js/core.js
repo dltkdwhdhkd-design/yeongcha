@@ -1058,7 +1058,7 @@ Viewer.prototype.update = function (now) {
 Viewer.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH_PLAY && now - this.last < 3000 ? TS.tm + (now - this.tmAt) : TS.tm; };
 Viewer.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
 
-const VERSION = 10;                              // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
+const VERSION = 11;                              // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
 const YC = { VERSION, T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
   opt, lseed, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
 if (typeof module !== 'undefined' && module.exports) module.exports = YC; else root.YC = YC;

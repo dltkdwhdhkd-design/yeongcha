@@ -104,8 +104,10 @@ function broker() {
   check('남은 인원 2명', await until(() => host.evaluate(() => window.YCApp.H.players.size === 2), 4000));
   await sleep(1800);                                                // 다시 들어오지 못한다 (자동 재입장 없음)
   check('내보낸 학생이 저절로 다시 들어오지 않음', (await st(c)).scr === 's-title' && await host.evaluate(() => window.YCApp.H.players.size === 2));
+  await host.click('#hc-mix .chk:nth-child(1)'); await sleep(200);                       // 차례대로 (지난 판은 섞여 있었다)
   await host.click('#hc-start');
   check('둘이서 다시 시작', await until(async () => (await st(a)).ph === 2 && (await st(b)).ph === 2 && (await st(a)).stage === 0, 12000));
+  check('차례대로를 고르면 지난 판에 섞였어도 원래 순서', await host.evaluate(() => { const H = window.YCApp.H; return H.mix === 0 && H.stages.join() === window.YC.order.filter(id => H.stages.indexOf(id) >= 0).join(); }));
   // 방 닫기
   await host.reload(); await host.click('#b-resume'); await sleep(1500);
   await host.click('#hp-end'); await sleep(800); await host.click('#he-close');
