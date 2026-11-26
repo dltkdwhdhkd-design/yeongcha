@@ -558,6 +558,7 @@ function launchNeed(n, m, sub) { return min(m || 3, max(1, n - 1 - subOf(sub, n)
 
 /* '동시에' 판정: 실제로 SYNC_WIN(ms) 안에 뛰었으면 동시. 통신이 느릴수록 늦게 오는 것을 조금 더 기다린다 */
 const SYNC_WIN = 380;
+const SAW_WIN = 0.7, SAW_ARM = 0.25;              // 시소: 첫 사람이 내려앉은 뒤 이 시간(초) 안에 내려앉은 사람까지 '동시에'로 쳐 준다 / 받침에서 판 길이의 이만큼 바깥에 내려앉으면 힘을 다 낸다 (더 안쪽은 약하다: 지렛대)
 function syncWait(W) { return SYNC_WIN + 60 + min(250, (W.lag || 0) * 0.6); }
 function simWorld(W, R, dt) {
   const n = W.n, ev = W.ev, tw = makeTotals(R), ld = {}, push = {};
@@ -648,12 +649,12 @@ function simWorld(W, R, dt) {
       if (r.gRef === o.id) { const w = tw(i), s = clamp(r.gOff, -o.L, o.L); tq += w * s; I += w * s * s; if (s < 0) lw += w; else rw += w; }
       if (r.ldObj === o.id && r.ldSeq !== (o.seen[i] || 0)) { o.seen[i] = r.ldSeq; if (r.ldV >= 200) o.pend.push({ s: r.ldS, v: r.ldV, i: i }); }
     }
-    if (o.pend.length && o.win <= 0) { o.win = 0.32; o.winTh = o.th; }
+    if (o.pend.length && o.win <= 0) { o.win = SAW_WIN + min(0.25, (W.lag || 0) * 0.0006); o.winTh = o.th; }   // 첫 사람이 내려앉은 뒤 이만큼 안에 내려앉은 사람까지 함께 센다 (통신이 느리면 조금 더)
     if (o.win > 0) {
       o.win -= dt;
-      if (o.win <= 0) {                                                                  // 뛰어내린 힘을 모아 반대쪽을 튕겨 올린다
-        let pr = 0, pL = 0;
-        for (const p of o.pend) { const v = clamp(p.v / o.vref, 0, 1), c = v * v * clamp(abs(p.s) / (0.4 * o.L), 0, 1); if (p.s > 0) pr += c; else pL += c; }
+      let pr = 0, pL = 0;
+      for (const p of o.pend) { const v = clamp(p.v / o.vref, 0, 1), c = v * v * clamp(abs(p.s) / (SAW_ARM * o.L), 0, 1); if (p.s > 0) pr += c; else pL += c; }
+      if (o.win <= 0 || max(pr, pL) >= launchNeed(n, o.nmax, o.nsub) - 0.001) {         // 뛰어내린 힘을 모아 반대쪽을 튕겨 올린다 (필요한 힘이 다 모이면 바로)
         const who = o.pend.map(p => p.i); o.pend.length = 0; o.win = 0;
         const side = pr >= pL ? 1 : -1, pw = max(pr, pL), wasUp = side > 0 ? o.winTh < 0.3 * o.lo : o.winTh > 0.3 * o.hi;
         let riders = 0;                                                                // 반대쪽에 탄 사람 (방금 뛰어내린 사람 자신은 빼고: 제 힘으로 저를 쏘아 올릴 수는 없다)
@@ -1058,7 +1059,7 @@ Viewer.prototype.update = function (now) {
 Viewer.prototype.time = function (now) { const TS = this.TS; return TS.ph === PH_PLAY && now - this.last < 3000 ? TS.tm + (now - this.tmAt) : TS.tm; };
 Viewer.prototype.total = function (now) { let s = 0; const TS = this.TS; for (let i = 0; i < TS.cl.length; i++) s += TS.cl[i] || 0; if (TS.ph === PH_READY || TS.ph === PH_PLAY) s += this.time(now); return s; };
 
-const VERSION = 12;                              // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
+const VERSION = 13;                              // 기기끼리 같은 판인지 맞춰 보는 번호 (올릴 때마다 하나씩)
 const YC = { VERSION, T, PW, PH, SAW_TH, G, JUMP_V, MOVE, VIEW_W, VIEW_H, PH_WAIT, PH_READY, PH_PLAY, PH_CLEAR, PH_DONE, SKIP_PEN,
   opt, lseed, clamp, lerp, approach, needOf, launchNeed, linkOn, traceBeam, mirrorFlip, mirrorOn, LB, World, Player, Team, Viewer, Stream, Ghost, stepPlayer, simWorld, sawPoint, rectOf, topOf, spawnAt, raftCap, ridersOn, stages: {}, order: [] };
 if (typeof module !== 'undefined' && module.exports) module.exports = YC; else root.YC = YC;
