@@ -329,14 +329,14 @@ function showEnd(d, me) {
 }
 
 /* ═══════════════════ 선생님 ═══════════════════ */
-const H = { on: false, code: '', id: '', ph: 'lobby', run: 0, df: 0, t0: 0, players: new Map(), seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, timer: 0, db: '', manual: false, dirty: true, lastBeat: 0, lastUi: 0, final: null, frame: 0 };
+const H = { on: false, code: '', id: '', ph: 'lobby', run: 0, df: 0, mix: 1, t0: 0, players: new Map(), seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, timer: 0, db: '', manual: false, dirty: true, lastBeat: 0, lastUi: 0, final: null, frame: 0 };
 const SS = { get() { try { return JSON.parse(sessionStorage.getItem('yc-host') || 'null'); } catch (e) { return null; } }, set(v) { try { if (v) sessionStorage.setItem('yc-host', JSON.stringify(v)); else sessionStorage.removeItem('yc-host'); } catch (e) {} } };
 $('b-host').onclick = () => { A.play('ui'); hostOpen(null); };
 (function () { const s = SS.get(); if (s && s.code && Date.now() - s.at < 3 * 3600 * 1000) { const b = $('b-resume'); b.hidden = false; b.textContent = '열어 둔 방 ' + s.code + ' 다시 열기'; b.onclick = () => hostOpen(s); let auto = false; try { auto = sessionStorage.getItem('yc-autoresume') === '1'; sessionStorage.removeItem('yc-autoresume'); } catch (e) {} if (auto) setTimeout(() => hostOpen(s), 50); } })();
 function hostOpen(saved) {
   stopGame(); S.on = false; clearInterval(S.hello);
   Object.assign(H, { on: true, ph: 'lobby', run: 0, t0: 0, seq: 0, nTeams: 0, stages: YC.order.slice(), skip: {}, kick: [], viewers: {}, vr: {}, sel: null, manual: false, dirty: true, final: null, finalStat: null, finalSplits: null, closed: false, db: '', lastUi: -1e9 });
-  H.players = new Map();
+  H.players = new Map(); H.mix = +store.get('yc-hmix', '1') === 1 ? 1 : 0;   // 스테이지 순서 섞기 (처음엔 섞기)
   if (saved) {
     H.code = saved.code; H.id = saved.id; H.ph = saved.ph; H.run = saved.run; H.df = saved.df === 1 ? 1 : 0; H.t0 = saved.t0; H.nTeams = saved.nTeams; H.stages = saved.stages; H.manual = saved.manual; H.skip = saved.skip || {}; H.kick = saved.kick || []; H.seq = saved.seq || 0; H.final = saved.final || null; H.finalStat = saved.fstat || null; H.finalSplits = saved.fsplit || null;
     (saved.players || []).forEach(p => H.players.set(p.id, Object.assign(p, { last: performance.now() })));
@@ -413,6 +413,8 @@ function hostLobby() {
   $('hc-start').disabled = !H.players.size;
   const cs = $('hc-stages'); cs.textContent = '';
   YC.order.forEach((id, i) => { const b = el('button', 'chk' + (H.stages.indexOf(id) >= 0 ? ' on' : ''), (i + 1) + ' ' + YC.build(id).name); b.onclick = () => { const at = H.stages.indexOf(id); if (at >= 0) { if (H.stages.length > 1) H.stages.splice(at, 1); } else H.stages = YC.order.filter(x => x === id || H.stages.indexOf(x) >= 0); H.dirty = true; hostBeat(); }; cs.append(b); });
+  const mx = $('hc-mix'); mx.textContent = '';                                          // 스테이지 순서: 고른 차례대로 / 판마다 섞기 (한 방의 모든 팀은 같은 순서·같은 배치)
+  [['차례대로', 0], ['판마다 섞기', 1]].forEach(([nm, k]) => { const b = el('button', 'chk' + (H.mix === k ? ' on' : ''), nm); b.onclick = () => { if (H.mix === k) return; H.mix = k; store.set('yc-hmix', String(k)); A.play('ui'); H.dirty = true; hostBeat(); }; mx.append(b); });
   const dfb = $('hc-diff'); dfb.textContent = '';
   YC.DIFF.forEach((nm, k) => { const b = el('button', 'chk' + (H.df === k ? ' on' : '') + (k ? ' hd' : ''), nm); b.onclick = () => { if (H.df === k) return; H.df = k; store.set('yc-hdiff', String(k)); A.play('ui'); H.dirty = true; hostBeat(); }; dfb.append(b); });
   $('hc-dnote').textContent = H.df ? '하드: 노말에 더해, 한 명이라도 빠지면 다 같이 그 방 깃발부터 다시(연대 책임) · 정해진 색 친구만 누를 수 있는 단추 · 불 꺼진 방. 맞춰 뛰는 시간은 노말과 같아요' : '노말: 장치가 여럿 붙은 판 (셋이 탑 쌓기, 쇠 추, 합선 스위치, 함정 판…)';
@@ -436,6 +438,7 @@ $('hc-auto').onclick = () => { H.manual = false; assignAll(); hostBeat(); };
 $('hc-shuffle').onclick = () => { const a = [...H.players.values()]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i].order; a[i].order = a[j].order; a[j].order = t; } H.manual = false; assignAll(); hostBeat(); };
 $('hc-start').onclick = () => {
   if (!H.players.size) return;
+  if (H.mix) { const a = YC.order.filter(id => H.stages.indexOf(id) >= 0); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } H.stages = a; }   // 판마다 스테이지 순서를 섞는다
   A.play('go'); H.ph = 'play'; H.run = Date.now() % 1000000; H.t0 = Date.now(); H.skip = {}; H.viewers = {}; H.vr = {}; H.final = null; H.sel = null; H.dirty = true; hostBeat(); setTimeout(hostSay, 300); setTimeout(hostSay, 700);
 };
 $('hp-end').onclick = () => { if (!confirm('지금 끝내고 결과를 볼까요?')) return; H.ph = 'end'; H.final = rankNow(); H.finalStat = collectStats(); H.finalSplits = collectSplits(); H.dirty = true; hostBeat(); A.play('done'); };

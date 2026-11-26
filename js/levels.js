@@ -20,8 +20,13 @@ function Rnd(seed) {
     slots: (cands, k, d) => { if (!seed) return d; const a = cands.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a.slice(0, k).sort((x, y) => x - y); } };
 }
 const TWO3 = [1, 1, 1, 2];                       // 셋 이상이면 두 명 (둘 이하면 한 명)
-/* 하드의 색 단추: 팀에서 정해진 한 친구(색으로 보인다)만 누를 수 있다. 누구 차례인지는 판마다 다르다 */
-const own = (M, R, d) => M.x ? { only: R.i(0, 5, d) } : {};
+/* 저쪽에서 받아 주는 단추: 받는 방법이 판마다 바뀐다 (원리는 같다). 고를 수 있는 것을 노말·하드로 따로 준다.
+   'one' 한 명 · 'two' 셋 이상이면 두 명 · 'own' 정해진 한 친구만 (색 단추: 단추 위에 그 친구 얼굴. 누구 차례인지도 판마다 다르다)
+   이쪽에서 누르는 사람이 많은 방(직렬·둘이 함께 누르는 방)은 'two'를 넣지 않는다 (건너간 사람이 모자라 받을 수 없다) */
+function catchBy(M, R, nopt, hopt, d) {
+  const k = M.x ? R.pick(hopt, hopt[0]) : R.pick(nopt, nopt[0]);
+  return k === 'two' ? { need: TWO3 } : k === 'own' ? { need: 1, only: R.i(0, 5, d) } : { need: 1 };
+}
 
 /* 높은 선반: 노말은 친구 머리 하나를 밟고(3칸), 하드는 셋이 탑을 쌓아야(4칸) 오른다.
    하드에서 팀이 둘뿐이면 d 디딤돌 위에서 받쳐 주고, 혼자면 s 디딤돌 두 개를 밟고 오른다. 선반이 있는 줄을 돌려준다 */
@@ -152,10 +157,11 @@ S.spring = (R, M) => {
   const L = new LB(50, 17), H = M.hard;
   L.fill(0, GY, 49, 16);
   L.spawn = { x: X(1), y: X(GY) };
-  // A. 문 앞뒤 저울: 어느 한쪽에 정해진 인원이 딱 맞게 서 있는 동안 문이 열린다
-  const p1 = L.add({ type: 'pad', x: X(8), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: 'half' });
+  // A. 문 앞뒤 저울: 어느 한쪽에 정해진 인원이 딱 맞게 서 있는 동안 문이 열린다 (몇 명씩인지는 판마다: 반반, 한 명만 남기, 한 명만 받기…)
+  const sp = R.pick([['half', 'rest'], ['rest', 'half'], ['most', 1], [1, 'most']], ['half', 'rest']);
+  const p1 = L.add({ type: 'pad', x: X(8), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: sp[0] });
   L.fill(14, 0, 15, 10);
-  const p2 = L.add({ type: 'pad', x: X(20), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: 'rest' });
+  const p2 = L.add({ type: 'pad', x: X(20), y: 380, w: 96, fy: X(GY), maxc: 30, mode: 'scale', eq: sp[1] });
   L.add({ type: 'door', x: X(14) + 8, y: X(11), w: 48, h: 64, link: [p1, p2], fast: true });
   L.add({ type: 'flag', x: X(24), y: X(GY), idx: 1 });
   // B. 발사대: 먼저 한 명을 왼쪽 높은 선반으로 쏘아 올린다. 그 친구가 단추를 밟고 있는 동안만 열쇠 앞 유리문이 열리므로, 남은 사람끼리 다시 쏘아 열쇠로
@@ -208,7 +214,7 @@ S.circuit = (R, M) => {
   L.add({ type: 'sign', x: X(3), y: X(GY), txt: '병렬', size: 15 });
   const a1 = L.add({ type: 'btn', x: X(7), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true, tag: 'pA' });
   L.fill(12, 0, 13, 10);
-  const a2 = L.add({ type: 'btn', x: X(15), y: X(GY), w: 64, need: H ? TWO3 : 1, style: 'sw', tag: 'pB' });
+  const a2 = L.add(Object.assign({ type: 'btn', x: X(15), y: X(GY), w: 64, style: 'sw', tag: 'pB' }, catchBy(M, R, ['two', 'one'], ['two', 'own'], 3)));
   L.add({ type: 'door', x: X(12) + 8, y: X(11), w: 48, h: 64, link: [a1, a2], fast: true });
   L.add({ type: 'wire', pts: [[X(8), X(GY)], [X(8), X(9)], [X(12), X(9)]], link: [a1] });
   L.add({ type: 'wire', pts: [[X(16), X(GY)], [X(16), X(9)], [X(14), X(9)]], link: [a2] });
@@ -227,7 +233,7 @@ S.circuit = (R, M) => {
   const sc = H ? L.add({ type: 'btn', x: X(shx), y: X(GY), w: 48, need: 1, style: 'sw', tag: 'short' }) : null, nl = sc ? [sc] : undefined;
   const rs = L.add({ type: 'relay', link: ss, mode: 'all', mom: true });
   L.fill(37, 0, 38, 10);
-  const byp = L.add(Object.assign({ type: 'btn', x: X(40), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'byp' }, own(M, R, 1)));
+  const byp = L.add(Object.assign({ type: 'btn', x: X(40), y: X(GY), w: 64, style: 'sw', tag: 'byp' }, catchBy(M, R, ['one'], ['own', 'one'], 1)));
   L.add({ type: 'door', x: X(37) + 8, y: X(11), w: 48, h: 64, link: [rs, byp], nlink: nl, fast: true });
   L.add({ type: 'wire', pts: [[X(21) + 24, X(10)], [X(37), X(10)]], link: ss, mode: 'all', nlink: nl });
   L.add({ type: 'bulb', x: X(30), y: X(8), link: [rs, byp], nlink: nl });
@@ -238,7 +244,7 @@ S.circuit = (R, M) => {
   const b1 = L.add({ type: 'btn', x: X(45), y: X(GY), w: 64, need: 1, style: 'sw', soloLatch: true, tag: 'bA' });
   const nc = H ? L.add({ type: 'btn', x: X(47), y: X(GY), w: 32, need: 1, style: 'sw', tag: 'cut' }) : null;
   L.fill(48, GY, 56, 16, ' ');
-  const b2 = L.add(Object.assign({ type: 'btn', x: X(58), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'bB' }, own(M, R, 2)));
+  const b2 = L.add(Object.assign({ type: 'btn', x: X(58), y: X(GY), w: 64, style: 'sw', tag: 'bB' }, catchBy(M, R, ['one', 'two'], ['own', 'two'], 2)));
   L.add({ type: 'door', x: X(48), y: X(GY), w: X(9), h: 14, link: [b1, b2], nlink: nc ? [nc] : undefined, inv: true, rate: 3, style: 'bridge' });
   L.add({ type: 'wire', pts: [[X(46), X(GY)], [X(46), X(11)], [X(60) - 12, X(11)], [X(60) - 12, X(GY)]], link: [b1, b2], nlink: nc ? [nc] : undefined });
   L.add({ type: 'flag', x: X(61), y: X(GY), idx: 3 });
@@ -263,7 +269,7 @@ S.fire = (R, M) => {
   });
   const rv = L.add({ type: 'relay', link: vs, mode: 'all', mom: true });
   L.fill(18, 0, 20, 8);
-  const dm = L.add(Object.assign({ type: 'btn', x: X(22), y: X(GY), w: 64, need: 1, style: 'vent', tag: 'damper' }, own(M, R, 1)));
+  const dm = L.add(Object.assign({ type: 'btn', x: X(22), y: X(GY), w: 64, style: 'vent', tag: 'damper' }, catchBy(M, R, ['one'], ['own', 'one'], 1)));
   L.add({ type: 'sign', x: X(22), y: X(10), txt: '공기 밸브', size: 12, w: 70 });
   L.add({ type: 'fire', x: X(18), y: X(9), w: 96, h: 128, link: [rv, dm], nlink: bw ? [bw] : undefined, rc: 4 });
   L.add({ type: 'flag', x: X(25), y: X(GY), idx: 1 });
@@ -318,7 +324,7 @@ S.freeze = (R, M) => {
   L.fill(10, GY, 19, 15, ' ');
   L.add({ type: 'water', x: X(10), y: X(GY) + 7, w: X(10), h: 89 });
   const c1 = L.add({ type: 'btn', x: X(6), y: X(GY), w: 64, need: 1, style: 'cool', soloLatch: true, tag: 'cA' });
-  const c2 = L.add({ type: 'btn', x: X(21), y: X(GY), w: 64, need: H ? TWO3 : 1, style: 'cool', tag: 'cB' });
+  const c2 = L.add(Object.assign({ type: 'btn', x: X(21), y: X(GY), w: 64, style: 'cool', tag: 'cB' }, catchBy(M, R, ['two', 'one'], ['two', 'own'], 2)));
   L.add({ type: 'door', x: X(10), y: X(GY), w: X(10), h: 14, link: [c1, c2], inv: true, rate: 1.6, style: 'ice' });
   L.add({ type: 'flag', x: X(23), y: X(GY), idx: 1 });
   // B. 얼음벽: 가열판을 모두 함께 누르고 있는 동안만 녹아 있다 (떼면 곧 다시 언다. 가열판은 팀 인원보다 하나 적다).
@@ -332,14 +338,14 @@ S.freeze = (R, M) => {
   const dc = H ? L.add({ type: 'btn', x: X(dcx), y: X(GY), w: 48, need: 1, style: 'cool', tag: 'dec' }) : null;
   const rl = L.add({ type: 'relay', link: hs, mode: 'all', mom: true, nlink: dc ? [dc] : undefined });
   L.fill(40, 0, 41, 6);
-  const hf = L.add(Object.assign({ type: 'btn', x: X(43), y: X(GY), w: 64, need: 1, style: 'heat', tag: 'hf' }, own(M, R, 1)));
+  const hf = L.add(Object.assign({ type: 'btn', x: X(43), y: X(GY), w: 64, style: 'heat', tag: 'hf' }, catchBy(M, R, ['one'], ['own', 'one'], 1)));
   L.add({ type: 'door', x: X(40), y: X(7), w: 64, h: X(6), link: [rl, hf], rate: 0.8, rc: 4, style: 'icewall' });
   L.add({ type: 'flag', x: X(46), y: X(GY), idx: 2 });
   // C. 더 넓은 물: 이번 얼음은 빨리 녹는다 (하드: 이쪽 냉각판 두 개를 함께 눌러야 언다. 셋 이상일 때)
   L.fill(52, GY, 63, 15, ' ');
   L.add({ type: 'water', x: X(52), y: X(GY) + 7, w: X(12), h: 89 });
   const c3 = L.add({ type: 'btn', x: X(48), y: X(GY), w: 64, need: 1, style: 'cool', soloLatch: true, tag: 'cC' });
-  const c4 = L.add(Object.assign({ type: 'btn', x: X(65), y: X(GY), w: 64, need: 1, style: 'cool', tag: 'cD' }, own(M, R, 2)));
+  const c4 = L.add(Object.assign({ type: 'btn', x: X(65), y: X(GY), w: 64, style: 'cool', tag: 'cD' }, catchBy(M, R, ['one'], ['own', 'one'], 2)));
   const c5 = H ? L.add({ type: 'btn', x: X(50), y: X(GY), w: 64, need: 1, style: 'cool', minN: 3, tag: 'cE' }) : null;
   const rN = H ? L.add({ type: 'relay', link: [c3, c5], mode: 'all', mom: true }) : null;
   L.add({ type: 'door', x: X(52), y: X(GY), w: X(12), h: 14, link: H ? [rN, c4] : [c3, c4], inv: true, rate: 3, style: 'ice' });
@@ -361,7 +367,7 @@ S.light = (R, M) => {
   const z1 = L.add({ type: 'sensor', x: X(13), y: X(11), mom: true });
   L.add({ type: 'mirror', x: X(13), y: X(2), d: 0 });                              // 고정 거울: 위로 간 빛을 벽 위 틈으로
   L.fill(16, 0, 17, 10); L.fill(16, 2, 17, 2, ' ');
-  const p1f = L.add(Object.assign({ type: 'btn', x: X(21), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'lB' }, own(M, R, 1)));
+  const p1f = L.add(Object.assign({ type: 'btn', x: X(21), y: X(GY), w: 64, style: 'sw', tag: 'lB' }, catchBy(M, R, ['one', 'two'], ['own', 'two'], 1)));
   L.add({ type: 'mirror', x: X(20), y: X(2), d: 0, ok: 1, link: [p1f] });
   const z1f = L.add({ type: 'sensor', x: X(20), y: X(11), mom: true });
   L.add({ type: 'door', x: X(16) + 8, y: X(11), w: 48, h: 64, link: [z1, z1f], fast: true });
@@ -383,7 +389,7 @@ S.light = (R, M) => {
   const z2 = L.add({ type: 'sensor', x: X(45), y: X(10), mom: true });
   L.fill(47, 0, 48, 10);
   L.add({ type: 'beam', x: X(53), y: X(9), dir: 2 }); L.fill(53, 10, 53, 10);
-  const p2f = L.add(Object.assign({ type: 'btn', x: X(51), y: X(GY), w: 64, need: 1, style: 'sw', tag: 'lD' }, own(M, R, 2)));
+  const p2f = L.add(Object.assign({ type: 'btn', x: X(51), y: X(GY), w: 64, style: 'sw', tag: 'lD' }, catchBy(M, R, ['one'], ['own', 'one'], 2)));
   L.add({ type: 'mirror', x: X(50), y: X(9), d: 0, ok: 1, link: [p2f] });
   const z2f = L.add({ type: 'sensor', x: X(50), y: X(6), mom: true });
   L.add({ type: 'door', x: X(47) + 8, y: X(11), w: 48, h: 64, link: [z2, z2f], fast: true });

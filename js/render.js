@@ -95,7 +95,7 @@ let curCols = null;                                        // 그리는 동안�
 function drawBtn(c, o, n, t) {
   if (o.style === 'hide') return;
   if (o.only !== undefined) { drawOwnBtn(c, o, t); return; }
-  if (o.minN && n < o.minN) { box(c, o.x + 2, o.y - 4, o.w - 4, 4, 2, '#dee2e6', '#adb5bd', 1.2); return; }    // 이 인원에서는 필요 없는 단추
+  if (o.minN && n < o.minN) { box(c, o.x - 3, o.y - 3, o.w + 6, 5, 2, '#adb5bd', '#868e96', 1.2); box(c, o.x + 2, o.y - 5, o.w - 4, 3, 1.5, '#d3f9d8', '#8ce99a', 1.2); okMark(c, o.x + o.w / 2, o.y - 15); return; }    // 이 인원에서는 필요 없는 단추: 눌린 것으로 친다 (✓)
   const need = YC.needOf(o.need, n), up = o.on ? 2 : 6, st = BTN_COL[o.style];
   box(c, o.x - 3, o.y - 3, o.w + 6, 5, 2, '#5c636b', INK, 1.5);
   box(c, o.x + 2, o.y - 3 - up, o.w - 4, up + 1, 2, st ? (o.on ? st[1] : st[0]) : (o.on ? '#40c057' : '#fa5252'), INK, 1.5);
@@ -108,6 +108,29 @@ function drawBtn(c, o, n, t) {
   }
   if (o.boxOnly) { const cx = o.x + o.w / 2; box(c, cx - 8, o.y - 30, 16, 14, 3, '#e0a660', INK, 1.5); c.strokeStyle = INK; c.lineWidth = 1; c.beginPath(); c.moveTo(cx - 8, o.y - 23); c.lineTo(cx + 8, o.y - 23); c.stroke(); }   // 상자만 눌리는 단추
   if (need > 1 || o.load) { const s = 9, gap = 12, x0 = o.x + o.w / 2 - (need - 1) * gap / 2; for (let i = 0; i < need; i++) pip(c, x0 + i * gap, o.y - 14, s, i < o.load ? '#37b24d' : '#f1f3f5', INK); }
+}
+/* 이 인원에서는 필요 없는 장치 표시 (이미 된 것으로 친다) */
+function okMark(c, x, y) { c.fillStyle = 'rgba(255,255,255,.85)'; c.strokeStyle = '#8ce99a'; c.lineWidth = 1.5; c.beginPath(); c.arc(x, y, 7.5, 0, TAU); c.fill(); c.stroke(); c.strokeStyle = '#2f9e44'; c.lineWidth = 2.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(x - 3.5, y); c.lineTo(x - 0.8, y + 2.8); c.lineTo(x + 3.8, y - 2.6); c.stroke(); }
+/* 사람 칸 줄: k칸 가운데 앞의 on칸을 초록으로 (몇 명 / 몇 개가 필요한지) */
+function pipRow(c, cx, y, k, on, over, s) { s = s || 9; const gap = s + 3, x0 = cx - (k - 1) * gap / 2; box(c, x0 - s / 2 - 5, y - s - 5, (k - 1) * gap + s + 10, s + 10, 5, over ? '#ffc9c9' : 'rgba(255,255,255,.9)', INK, 1.5); for (let i = 0; i < k; i++) pip(c, x0 + i * gap, y, s, over ? '#fa5252' : i < on ? '#37b24d' : '#dee2e6', INK); }
+/* 여러 장치를 '모두 함께' 눌러야 하는 곳(직렬 스위치·공기 구멍·가열판…): 이 인원에서 필요한 개수와 지금 눌린 개수.
+   그 장치들이 켜는 전구·불·문 옆에 보여 준다. 밟으면 안 되는 판(합선·풀무·냉각판)을 누가 밟고 있으면 빨간 ✕ */
+function drawNeedAll(c, W, n) {
+  for (const z of W.relays) {
+    if (z.mode !== 'all' || !z.link || z.link.length < 2) continue;
+    const L = z.link.map(id => W.byId[id]).filter(q => q && !(q.minN && n < q.minN));
+    if (!L.length) continue;
+    let at = null;
+    for (const o of W.objs) if (o.link && o.link.indexOf(z.id) >= 0) {
+      if (o.type === 'bulb') { at = [o.x, o.y + 38]; break; }
+      if (!at && o.type === 'fire') at = [o.x + o.w / 2, o.y - 14];
+      if (!at && o.type === 'door') at = [o.x + o.w / 2, (o.inv ? o.y : o.y) - 16];
+    }
+    if (!at) continue;
+    const on = L.filter(q => q.type === 'pad' ? q.ok : q.on).length, bad = !!(z.nlink && z.nlink.some(id => W.byId[id] && W.byId[id].on));
+    pipRow(c, at[0], at[1], L.length, on, false, 9);
+    if (bad) label(c, '✕', at[0] + (L.length - 1) * 6 + 18, at[1] - 4, 15, '#fa5252', '#fff');
+  }
 }
 /* 색 단추: 그 색 친구만 누를 수 있다. 위에 그 친구 얼굴(색·머리 장식)을 띄운다 */
 function drawOwnBtn(c, o, t) {
@@ -240,6 +263,10 @@ function drawPad(c, o, n) {
   for (const sx of [o.x + o.w * 0.28, o.x + o.w * 0.72]) { c.beginPath(); const y0 = top + 10, y1 = o.fy - 3, k = 7; for (let i = 0; i <= k; i++) c.lineTo(sx + (i === 0 || i === k ? 0 : (i % 2 ? 9 : -9)) + shake, y0 + (y1 - y0) * i / k); c.stroke(); }
   box(c, o.x - 2, o.fy - 5, o.w + 4, 5, 2, '#5c636b', INK, 1.5);
   box(c, o.x + shake, top, o.w, 11, 4, o.mode === 'scale' ? (o.ok ? '#40c057' : '#74c0fc') : '#ff922b', INK, 2.5);
+  if (o.mode === 'scale' && o.minN && n < o.minN) { okMark(c, o.x + o.w / 2, o.y - 36); return; }   // 이 인원에서는 필요 없는 저울
+  if (o.mode !== 'scale' && n > 1) {                                                      // 발사대: 몇 명이 함께 눌렀다가 '동시에' 뛰어야 하나
+    const k = YC.launchNeed(n, 99, o.nsub); pipRow(c, o.x + o.w / 2 - 22, o.y - 44, k, 0, false, 9); label(c, '동시에!', o.x + o.w / 2 + (k - 1) * 6 + 18, o.y - 48, 12, INK, '#fff', 'left');
+  }
   if (o.mode === 'scale') {                                                                // 저울: 필요한 무게만큼 사람 칸
     const want = o.want || YC.needOf(o.eq, n), s = 10, gap = 13, x0 = o.x + o.w / 2 - (want - 1) * gap / 2, y = o.y - 46;
     box(c, x0 - s / 2 - 6, y - s - 6, (want - 1) * gap + s + 12, s + 12, 6, o.load > want ? '#ffc9c9' : 'rgba(255,255,255,.9)', INK, 1.5);
@@ -258,7 +285,7 @@ function drawRaft(c, o) {
   c.fillStyle = '#fff3bf'; c.beginPath(); c.arc(x + 5, y + 4.5, 2.5, 0, TAU); c.arc(x + w - 5, y + 4.5, 2.5, 0, TAU); c.fill();
   // 실은 무게 표시
   const cap = YC.raftCap(o, o._n || 2);
-  if (o.load) { const s = 9, gap = 12, x0 = x + w / 2 - (cap - 1) * gap / 2; for (let i = 0; i < Math.max(cap, o.load); i++) pip(c, x0 + i * gap, y + 32, s, i >= cap ? '#fa5252' : i < o.load ? '#37b24d' : '#dee2e6', INK); }
+  { const s = 9, gap = 12, x0 = x + w / 2 - (cap - 1) * gap / 2; for (let i = 0; i < Math.max(cap, o.load | 0); i++) pip(c, x0 + i * gap, y + 32, s, i >= cap ? '#fa5252' : i < o.load ? '#37b24d' : '#dee2e6', INK); }   // 딱 맞아야 하는 무게 (늘 보이게)
 }
 function drawKey(c, o, t) {
   if (o.used) return;
@@ -283,7 +310,7 @@ function drawFlag(c, o, on) {
   c.fillStyle = on ? '#40c057' : '#ced4da'; c.beginPath(); c.moveTo(o.x + 10, o.y - 46); c.lineTo(o.x + 32, o.y - 38); c.lineTo(o.x + 10, o.y - 30); c.closePath(); c.fill(); c.stroke();
   c.fillStyle = '#868e96'; c.beginPath(); c.arc(o.x + 10, o.y - 47, 3, 0, TAU); c.fill(); c.stroke();
 }
-function drawSign(c, o, n) {
+function drawSign(c, o, n, W) {
   const w = o.w || (o.icon === 'drop' ? 92 : 64), x = o.x - (w - 64) / 2, y = o.y, h = 40;
   c.strokeStyle = INK; c.lineWidth = 2.5; c.fillStyle = '#a8703d'; c.fillRect(x + w / 2 - 3, y - 20, 6, 20); c.strokeRect(x + w / 2 - 3, y - 20, 6, 20);
   box(c, x, y - 20 - h, w, h, 6, '#fff4d6', INK, 2.5);
@@ -293,7 +320,7 @@ function drawSign(c, o, n) {
     // falls through
     case 'stack': pip(c, cx - 10, cy + 14, 12, '#74c0fc'); pip(c, cx - 10, cy + 2, 12, '#ff8787'); arrow(c, cx + 8, cy + 10, 20, 1, '#40c057', 4); c.save(); c.translate(cx + 14, cy + 2); c.rotate(-Math.PI / 2); arrow(c, 0, 0, 14, 1, '#40c057', 4); c.restore(); break;
     case 'push': { const k = YC.needOf(o.need || 'most', n); for (let i = 0; i < Math.min(k, 3); i++) pip(c, cx - 22 + i * 9, cy + 9, 9, '#ff8787'); arrow(c, cx - 2, cy + 3, 13, 1, '#fa5252', 4); box(c, cx + 13, cy - 7, 15, 15, 3, '#e0a660', INK, 1.5); break; }
-    case 'drop': { const k = Math.max(1, n - 1); for (let i = 0; i < Math.min(k, 3); i++) { pip(c, cx - 34 + i * 11, cy - 2, 10, '#ff8787'); } c.save(); c.translate(cx - 23, cy + 1); c.rotate(Math.PI / 2); arrow(c, 0, 0, 13, 1, '#fa5252', 4); c.restore(); label(c, '동시에!', cx + 20, cy, 12, INK, null); break; }
+    case 'drop': { const sw = W && W.saws.find(q => q.launchV), k = sw ? YC.launchNeed(n, sw.nmax, sw.nsub) : Math.max(1, n - 1); for (let i = 0; i < Math.min(k, 3); i++) { pip(c, cx - 34 + i * 11, cy - 2, 10, '#ff8787'); } c.save(); c.translate(cx - 23, cy + 1); c.rotate(Math.PI / 2); arrow(c, 0, 0, 13, 1, '#fa5252', 4); c.restore(); label(c, '동시에!', cx + 20, cy, 12, INK, null); break; }
     case 'ice': label(c, '미끌!', cx, cy, 15, '#1c7ed6', null); break;
     default: label(c, o.txt || '', cx, cy, o.size || 13, INK, null);
   }
@@ -381,11 +408,12 @@ Renderer.prototype.draw = function (v) {
   c.drawImage(this.cache, 0, 0, this.cache.width / sc, this.cache.height / sc);
   if (W.n <= 2) for (let yy = 0; yy < W.rows; yy++) for (let xx = 0; xx < W.cols; xx++) { const q = W.ch(xx, yy); if ((q === 's' && W.n <= 1) || q === 'd') { box(c, xx * T + 1, yy * T + 1, T - 2, T - 2, 6, '#d0ebff', '#4dabf7', 2.5); label(c, q === 's' ? '혼자' : '둘이', xx * T + 16, yy * T + 16, 10, '#1c7ed6', null); } }
   const n = W.n, O = W.objs; curCols = v.cols || null;
-  for (const o of O) if (o.type === 'exit') drawExit(c, o, t); else if (o.type === 'flag') drawFlag(c, o, v.ck >= o.idx); else if (o.type === 'sign') drawSign(c, o, n);
+  for (const o of O) if (o.type === 'exit') drawExit(c, o, t); else if (o.type === 'flag') drawFlag(c, o, v.ck >= o.idx); else if (o.type === 'sign') drawSign(c, o, n, W);
     else if (o.type === 'wire') drawWire(c, o, W, t); else if (o.type === 'cell') drawCell(c, o); else if (o.type === 'bulb') drawBulb(c, o, W, t);
     else if (o.type === 'mirror') drawMirror(c, o, W); else if (o.type === 'sensor') drawSensor(c, o, t); else if (o.type === 'beam') drawSource(c, o);
   for (const o of O) if (o.type === 'lift') drawLift(c, o, W, t); else if (o.type === 'door') drawDoor(c, o, t); else if (o.type === 'btn') drawBtn(c, o, n, t); else if (o.type === 'pad') drawPad(c, o, n); else if (o.type === 'saw') drawSaw(c, o); else if (o.type === 'raft') { o._n = n; drawRaft(c, o); }
   for (const o of O) if (o.type === 'box') drawBox(c, o, n);
+  drawNeedAll(c, W, n);
   for (const o of W.fires) drawFire(c, o, t);
   for (const src of W.beams) { const r = YC.traceBeam(W, src); c.lineCap = 'round'; c.lineJoin = 'round'; for (const [lw, col] of [[10, 'rgba(255,236,153,.35)'], [4, 'rgba(255,212,59,.95)'], [1.5, '#fff']]) { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); r.pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke(); } }
   // 사람

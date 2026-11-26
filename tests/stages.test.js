@@ -27,7 +27,7 @@ for (const df of MODES) for (const id of YC.order) {
 }
 // 판마다 달라지는 배치(씨앗)로도 깨지는지
 for (const df of MODES) { let bad = 0, all = 0;
-  for (const id of ['ice', 'circuit', 'fire', 'balloon', 'freeze', 'light']) for (const n of [1, 2, 3, 4, 6]) for (const ls of [11, 222, 3333, 44444, 555555, 6789]) {
+  for (const id of ['ice', 'spring', 'circuit', 'fire', 'balloon', 'freeze', 'light']) for (const n of [1, 2, 3, 4, 6]) for (const ls of [11, 222, 3333, 44444, 555555, 6789]) {
     if (ONLY && ONLY !== id) continue;
     all++; if (run(id, n, [80, 20, 0.01], 7, false, df, ls) < 0) bad++;
   }

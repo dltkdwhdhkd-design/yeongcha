@@ -54,9 +54,10 @@ st.on = function () {
     inp.l = b.inp.l; inp.r = b.inp.r; inp.j = b.inp.j; inp.jp = b.inp.jp; inp.en = b.inp.en;
   };
 };
+function sig(def) { const t = JSON.stringify([def.id, def.g, def.objs]); let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return def.id + ':' + h.toString(36); }   // 맵 지문: 모든 팀이 같은 맵인지 본다
 st.info = function () {
   const G = window.YCApp.G, T = G.team; if (!T) return null;
   return { stage: T.TS.stage, run: T.TS.run, ph: T.TS.ph, tm: Math.round(T.time(performance.now())), x: Math.round(T.me.x), y: Math.round(T.me.y), fin: T.me.fin, anchor: T.anchor, n: T.TS.n, err: st.err, cl: T.TS.cl.slice(),
-    net: G.solo ? null : window.YCNet.status(), stat: window.YCNet.stat, ticks: st.ticks || 0 };
+    net: G.solo ? null : window.YCNet.status(), stat: window.YCNet.stat, ticks: st.ticks || 0, stg: T.stages[T.TS.stage], sig: T.W && T.W.def ? sig(T.W.def) : '', team: G.myTeam !== undefined ? G.myTeam : -1, job: st.bot ? st.bot.job : '', le: st.bot ? st.bot.lastErr || '' : '' };
 };
 })();

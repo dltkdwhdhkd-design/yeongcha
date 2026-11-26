@@ -178,10 +178,11 @@ function spotOn(b, s, m) {
 function* standOn(b, s, x, stop) {
   if (s.type === 'pad' && !onIt(b, s)) {
     if (b.tell) { yield* b.walkTo(x, 10, 30, stop); return; }
-    if (b.me.gr && b.me.gRef < 0) { yield* offHead(b, -1, stop); return; }
-    const from = b.cx() < s.x ? s.x - 24 : s.x + s.w + 24;
-    if (Math.abs(b.cx() - from) > 8) { yield* b.walkTo(from, 6, 30, stop); return; }
-    yield* b.jump(Math.max(s.x + 14, Math.min(s.x + s.w - 14, x)), 4); return;
+    const tx = Math.max(s.x + 14, Math.min(s.x + s.w - 14, x)), out = b.cx() < s.x ? s.x - b.cx() : b.cx() - s.x - s.w;   // out: 판 가장자리에서 얼마나 떨어져 있나
+    // 친구 머리 위: 판이 코앞이면 머리에서 바로 뛰어 오른다 (내가 머리 위에 있으면 밑의 친구는 못 뛰므로, 내려왔다 다시 오르기를 되풀이하지 않게)
+    if (b.me.gr && b.me.gRef < 0) { if (out < 72) yield* b.jump(tx, 4); else yield* offHead(b, -1, stop); return; }
+    if (out < 6 || out > 44) { yield* b.walkTo(b.cx() < s.x ? s.x - 24 : s.x + s.w + 24, 6, 30, stop); return; }   // 판 앞 한 자리로 몰리지 않게, 뛸 만한 거리면 어디서든 뛴다
+    yield* b.jump(tx, 4); return;
   }
   if (s.type === 'pad') { if (Math.abs(b.cx() - x) > 6 && !b.tell) { yield* b.walkTo(x, 4, 10, stop); return; } yield* still(b, stop, { k: 'wait' }); return; }
   yield* stay(b, x, stop, Math.min(12, s.w / 2 - 10), s);
@@ -643,9 +644,11 @@ scripts.spring = function (sim) {
       const second = gl().open > 0.9 || latched;                     // 유리문이 열려 있으면 열쇠로 쏜다
       if (!second && shelfer) return idleJ(b, 'gw', X(27) + rk(b) * 8);   // 선반 친구가 단추를 밟을 때까지
       const pool = av.filter(o => o !== ph && !shelfL(o)), order = pool.slice().sort(pri), rider = order[0];
-      const spot = o => { const r = order.indexOf(o) - 1, m = Math.max(1, order.length - 1); return o === rider ? (second ? 1040 : 910) : Math.round((second ? 900 : 945) + 95 * r / m); };
+      const spot = o => { const r = order.indexOf(o) - 1, m = Math.max(1, order.length - 2); return o === rider ? (second ? 1040 : 910) : Math.round((second ? 900 : 945) + 95 * r / m); };   // 판 너비를 다 써서 고르게 (붙어 서면 서로 머리 위로 올라탄다)
       if (!onIt(b, lp())) return { k: 'lon', go: stop => standOn(b, lp(), spot(b), stop) };
-      const allOn = () => pool.every(o => onIt(o, lp())) && lp().load === pool.length && lp().comp > Math.min(lp().maxc, lp().load * lp().maxc / n) - 2;
+      const allOn = () => pool.every(o => onIt(o, lp()) && (o.me.gRef === lp().id || isH(o))) && lp().load === pool.length && lp().comp > Math.min(lp().maxc, lp().load * lp().maxc / n) - 2;
+      // 발사대 위에서 친구 머리에 올라섰다: 밑의 친구가 못 뛰므로 판 위로 내려선다
+      if (b.me.gr && b.me.gRef < 0 && !b.tell) return { k: 'loff', go: stop => offHead(b, spot(b) >= b.cx() ? 1 : -1, stop) };
       if (b === rider) return { k: 'lride' + second, go: function* (stop) {
         if (Math.abs(b.cx() - spot(b)) > 6 && !b.tell) { yield* b.walkTo(spot(b), 4, 10, stop); return; }
         if (b.tell) b.tell({ k: 'wait' });

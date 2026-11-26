@@ -59,12 +59,14 @@ async function shot(page, name) { if (SHOTS) await page.screenshot({ path: path.
   if (process.env.E2E_HARD) await host.click('#hc-diff .chk:nth-child(2)');               // E2E_HARD=1: 하드로
   await host.click('#hc-start');
   const t0 = Date.now(); let lastKey = '', shots = {}, ok = false, botErr = null, directSeen = 0, directAll = 0; let tk0 = null, tkT = 0, minTps = 999;
+  const maps = {};   // 팀 → 스테이지 번호 → 맵 지문 (모든 팀이 같은 순서·같은 맵인지)
   for (;;) {
     await sleep(1000);
     const el = (Date.now() - t0) / 1000;
     const infos = await Promise.all(kids.map(k => k.evaluate(() => window.YCTest.info()).catch(() => null)));
     const hs = await host.evaluate(() => { const H = window.YCApp.H; return { ph: H.ph, rk: H.ph === 'end' ? H.final : null, views: Object.keys(H.viewers).length }; });
     if (infos.every(i => i)) { const tk = infos.map(i => i.ticks), now = Date.now(); if (tk0 && now - tkT > 900) { const tps = Math.min.apply(null, tk.map((v, i) => (v - tk0[i]) * 1000 / (now - tkT))); if (tps > 0 && tps < minTps) minTps = tps; } tk0 = tk; tkT = now; }
+    for (const i of infos) if (i && i.sig && i.team >= 0 && i.ph >= 1) { const m = maps[i.team] || (maps[i.team] = {}); (m[i.stage] || (m[i.stage] = new Set())).add(i.sig); }
     const key = infos.map(i => i ? i.stage + '.' + i.ph : '-').join(' ');
     if (key !== lastKey) { lastKey = key; console.log('  ' + el.toFixed(0) + '초  스테이지.단계 [' + key + ']  기준 기기 ' + infos.map(i => i && i.anchor ? 'A' : '.').join('') + '  직접 ' + infos.map(i => i && i.net ? i.net.direct + '/' + i.net.want : '-').join(' ')); }
     for (const s of [6, 14, 30, 60, 100, 140]) if (el > s && !shots[s]) { shots[s] = 1; await shot(host, 'host-play-' + s); await shot(kids[0], 'kid0-play-' + s); await shot(kids[N - 1], 'kidN-play-' + s); }
@@ -86,6 +88,9 @@ async function shot(page, name) { if (SHOTS) await page.screenshot({ path: path.
   const ends = await Promise.all(kids.map(k => k.evaluate(() => ({ end: document.getElementById('s-end').classList.contains('on'), mine: document.getElementById('e-mine').textContent, net: window.YCNet.status(), stat: window.YCNet.stat }))));
   checks.push(['학생 화면도 결과 표시', ends.every(e => e.end && /위/.test(e.mine))]);
   checks.push(['페이지 오류 없음', errors.length === 0]);
+  { const ts = Object.keys(maps), row = t => STAGES.map((_, k) => maps[t][k] ? [...maps[t][k]].join('/') : '?').join(' → ');
+    for (const t of ts) console.log('  ' + (+t + 1) + '팀 맵: ' + row(t));
+    checks.push(['모든 팀이 같은 순서·같은 맵 (' + ts.length + '팀)', ts.length === TEAMS && ts.every(t => row(t) === row(ts[0]) && !/[?\/]/.test(row(t)))]); }
   if (RTC && N / TEAMS > 1) checks.push(['게임 내내 팀원끼리 직접 연결됨 (' + directAll + '/' + directSeen + '번 확인)', directSeen > 0 && directAll >= directSeen * 0.9]);
   else checks.push(['직접 연결 없이 중계 서버만으로 진행', ends.every(e => !(e.stat.din > 0))]);
   console.log('결과: ' + (res.final || []).map((r, i) => (i + 1) + '위 ' + (r[0] + 1) + '팀 ' + (r[2] / 1000).toFixed(1) + '초').join(', '));
